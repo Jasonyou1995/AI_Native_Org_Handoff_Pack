@@ -29,3 +29,5 @@ coverage/
 
 # Local editor and OS files
 .idea/
+/.claude-flow
+/.omc
