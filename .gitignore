@@ -29,5 +29,19 @@ coverage/
 
 # Local editor and OS files
 .idea/
-/.claude-flow
-/.omc
+.claude-flow/
+.omc/
+
+# Local agent skills and their usage guide. Never committed, never published.
+/.claude/
+/.local/
+skills-lock.json
+
+# Experiment artifacts: raw transcripts stay local until the preprint lands.
+bench/results/raw/
+bench/results/*.jsonl
+!bench/results/summary/**
+bench/.ledger/
+.venv*/
+__pycache__/
+*.egg-info/
