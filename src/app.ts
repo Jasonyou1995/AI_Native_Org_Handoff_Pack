@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import type { Config } from "./config.js";
+import { discoverLocalModels } from "./discovery.js";
 import { Gateway, GatewayError, limits } from "./gateway.js";
 import { scannerStatus } from "./policy.js";
 export function createApp(config: Config, gateway = new Gateway(config)) {
@@ -71,6 +72,24 @@ export function createApp(config: Config, gateway = new Gateway(config)) {
       },
     }),
   );
+  // Coalesce repeat clicks and bound discovery to one probe pair per five seconds.
+  let discovery: ReturnType<typeof discoverLocalModels> | undefined;
+  let discoveryAt = 0;
+  app.get("/api/setup/discover", async (c) => {
+    if (!config.auth) return c.json({ error: "setup_token_required" }, 403);
+    if (!discovery || Date.now() - discoveryAt >= 5000) {
+      discoveryAt = Date.now();
+      discovery = discoverLocalModels();
+    }
+    return c.json({
+      scope: "gateway_loopback",
+      requiresRestart: true,
+      configuredLocal: config.local
+        ? { url: config.local.url, model: config.local.model }
+        : null,
+      providers: await discovery,
+    });
+  });
   const body = async (c: {
     req: {
       header: (s: string) => string | undefined;

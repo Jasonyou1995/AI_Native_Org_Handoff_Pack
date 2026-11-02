@@ -16,7 +16,8 @@
     "test:all": "vitest run --exclude \"dist/**\"",
     "bench": "node --import tsx src/benchmark.ts",
     "rust:build": "cargo build --manifest-path rust-core/Cargo.toml --release --locked",
-    "rust:test": "cargo test --manifest-path rust-core/Cargo.toml --locked"
+    "rust:test": "cargo test --manifest-path rust-core/Cargo.toml --locked",
+    "personal": "node dist/src/personal.js"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",

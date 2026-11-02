@@ -6,6 +6,12 @@ A local-first gateway with a Rust privacy scanner, TypeScript API and console, a
 
 本地优先网关，使用 Rust 隐私扫描核心、TypeScript API 与界面，并提供可选 Python 客户端示例。未知和机密内容默认留在本地。云端发送默认关闭，开启后仍须符合配置策略并确认具体发送内容。
 
+## Personal use / 个人使用
+
+The host launcher `npm run personal` offers bounded discovery of existing local Ollama/OpenAI-compatible models or a synthetic demo, with a fresh process-only token and cloud disabled. The browser includes a three-step onboarding guide. Read `docs/15-个人快速开始.md`; Docker discovery sees container localhost, not your host laptop. Real model inference remains a separate acceptance check.
+
+个人启动器提供本机模型检测与合成演示选择，默认关闭云端、不保存凭据；具体安装与可选云配置见个人指南。
+
 ## Downloads / 下载
 
 - `privacy-handoff-gateway-linux-amd64.tar.gz`: the exact Linux AMD64 container image that passed this release's CI. Load it with `gzip -dc privacy-handoff-gateway-linux-amd64.tar.gz | docker load`.

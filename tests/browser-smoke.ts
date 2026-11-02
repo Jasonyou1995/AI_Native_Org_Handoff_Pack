@@ -259,6 +259,24 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
+  // Discovery UI uses deterministic metadata, never a real model service.
+  await send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `(() => {
+      const originalFetch = window.fetch.bind(window);
+      window.discoveryFixture = {scope:"gateway_loopback",requiresRestart:true,configuredLocal:null,providers:[{id:"ollama",label:"Ollama",status:"available",url:"http://127.0.0.1:11434/v1/chat/completions",models:["synthetic-model:tiny"]}]};
+      window.discoveryDelay = 0;
+      window.discoveryCalls = 0;
+      window.fetch = async (input, options) => {
+        if (input === "/api/setup/discover") {
+          window.discoveryCalls += 1;
+          const body = JSON.stringify(window.discoveryFixture);
+          await new Promise(resolve => setTimeout(resolve, window.discoveryDelay));
+          return new Response(body, {status:200, headers:{"Content-Type":"application/json"}});
+        }
+        return originalFetch(input, options);
+      };
+    })();`,
+  });
   await send("Page.navigate", { url: origin });
   await wait('document.querySelector("#inspect") !== null');
   assert.equal(
@@ -279,7 +297,44 @@ try {
     await evaluate('document.querySelector("#scanner-config").textContent'),
     "Rust 核心 · 可用",
   );
-  await click("#example");
+  await wait('!document.querySelector("#model-config-panel").hidden');
+  assert.equal(
+    await evaluate('document.querySelector("#setup-mode").textContent'),
+    "合成演示 · Demo",
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#local-env-preview").textContent'),
+    "LOCAL_URL=http://127.0.0.1:11434/v1/chat/completions\nLOCAL_MODEL=synthetic-model:tiny\nCLOUD_ENABLED=false",
+  );
+  assert.equal(
+    await evaluate("window.discoveryCalls"),
+    1,
+    "One auto-discovery after authentication",
+  );
+  await evaluate(
+    'window.discoveryFixture.providers[0].models = ["bad\\nCLOUD_ENABLED=true"]',
+  );
+  await click("#detect-models");
+  await wait(
+    'document.querySelector("#discovery-status").textContent.includes("列表无效")',
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#model-config-panel").hidden'),
+    true,
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#local-env-preview").textContent'),
+    "",
+  );
+  await evaluate(
+    'window.discoveryFixture.providers[0].models = []; window.discoveryFixture.providers[0].status = "unavailable"',
+  );
+  await click("#detect-models");
+  await wait(
+    'document.querySelector("#discovery-status").textContent.includes("没有检测到")',
+  );
+  await click("#start-demo");
+
   await click("#inspect");
   await wait('!document.querySelector("#local-run").hidden');
   assert.equal(
@@ -366,7 +421,19 @@ try {
     await evaluate("localStorage.length + sessionStorage.length"),
     0,
   );
+  await evaluate("window.discoveryDelay = 300");
+  await click("#detect-models");
   await click("#reset");
+  await pause(400);
+  assert.equal(
+    await evaluate('document.querySelector("#model-services").children.length'),
+    0,
+    "Late discovery cannot repopulate reset workspace",
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#local-env-preview").textContent'),
+    "",
+  );
   assert.equal(await evaluate('document.querySelector("#prompt").value'), "");
   assert.equal(
     await evaluate('document.querySelector("#inspect").disabled'),
@@ -392,6 +459,10 @@ try {
     passed: [
       "real Rust/synthetic local API",
       "wrong/right token",
+      "personal onboarding with synthetic discovery fixture",
+      "unsafe model metadata rejected",
+      "unavailable discovery keeps demo usable",
+      "reset discards late discovery",
       "single request on double-click",
       "HTML rendered as text",
       "edit invalidates preview",
