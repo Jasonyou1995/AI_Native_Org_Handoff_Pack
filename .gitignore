@@ -56,3 +56,6 @@ rust-core/target/
 rust-core/target-docker/
 
 artifacts/
+
+# Local offline distribution bundles
+offline-bundle/

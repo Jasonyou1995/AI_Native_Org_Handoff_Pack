@@ -16,9 +16,9 @@ Read the bilingual [mission and collaboration charter](docs/13-使命与协作�
 
 ## Status and license · 状态与许可
 
-**Pilot software, not a security-certified production product.** The recorded checks passed 47 TypeScript tests and 10 Rust tests. Docker image verification and browser end-to-end checks remain pending. The employee-device → company → cloud architecture is **design only**; current code is a single-process local/cloud gateway. See the [verification record](docs/12-验证记录.md). These tests do not validate the historical agent-handoff lifecycle or coordination benchmark.
+**Pilot software, not a security-certified production product.** The recorded checks passed 47 TypeScript tests and 10 Rust tests. Docker image build, synthetic image smoke and browser smoke passed for commit `7e605e5` in [GitHub CI](https://github.com/Jasonyou1995/AI_Native_Org_Handoff_Pack/actions/runs/41420786747). Offline-image export and disconnected-runtime checks are separate release gates. The employee-device → company → cloud architecture is **design only**; current code is a single-process local/cloud gateway. See the [verification record](docs/12-验证记录.md). These tests do not validate the historical agent-handoff lifecycle or coordination benchmark.
 
-**这是试点软件，不是已获安全认证的生产产品。** 已记录的检查通过 47 项 TypeScript 测试与 10 项 Rust 测试。Docker 镜像验证及浏览器端到端检查仍待完成。员工设备 → 企业 → 云端三层架构**仅为设计**；当前代码是单进程本地/云端网关。见[验证记录](docs/12-验证记录.md)。这些测试不代表历史 agent handoff 生命周期或协同成本基准已完成。
+**这是试点软件，不是已获安全认证的生产产品。** 已记录的检查通过 47 项 TypeScript 测试与 10 项 Rust 测试。提交 `7e605e5` 的 Docker 镜像构建、合成镜像烟测与浏览器烟测已在 [GitHub CI](https://github.com/Jasonyou1995/AI_Native_Org_Handoff_Pack/actions/runs/41420786747) 通过。离线镜像导出与断网运行检查是另外的发布门槛。员工设备 → 企业 → 云端三层架构**仅为设计**；当前代码是单进程本地/云端网关。见[验证记录](docs/12-验证记录.md)。这些测试不代表历史 agent handoff 生命周期或协同成本基准已完成。
 
 Public documentation, specifications, standalone tests and examples use Apache-2.0 under the [license scope](LICENSE-SCOPE.md). The new gateway core is **source-available, not OSI open source**: [Handoff Community 1.0](LICENSES/Handoff-Community-1.0.txt) permits free normal internal use by individuals, universities, companies and other organizations, including production, research and teaching. Commercializing the gateway itself requires a separate license. Existing Apache-2.0 rights remain intact.
 
@@ -35,6 +35,8 @@ TypeScript handles HTTP, policy, approval and UI; Rust is the default bounded te
 TypeScript 负责 HTTP、策略、批准与 UI；默认 Rust 核心负责有界文本扫描。Rust 缺失或失败时拒绝处理，不会静默降级；管理员可显式选择 TypeScript 扫描器。可选 Python 标准库客户端是集成示例，不是另一个服务端。两种检测器都不能发现所有秘密，也没有 Rust 提速承诺。
 
 ## First run · 第一次使用
+
+[Documentation hub · 文档中心](docs/README.md) | [Offline installation and release · 离线安装与发布](docs/14-离线安装与发布.md)
 
 Prepare Docker Engine or Docker Desktop, Docker Compose and Git. `make` is a convenience entrypoint; see the [deployment guide](docs/10-部署演练.md) for direct Compose commands and offline preparation. Host Node.js is not required. The first build needs access to image and dependency sources.
 
