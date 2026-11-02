@@ -17,3 +17,7 @@ coverage
 
 rust-core/target/
 rust-core/target-docker/
+
+# Generated test and distribution artifacts
+artifacts/
+offline-bundle/

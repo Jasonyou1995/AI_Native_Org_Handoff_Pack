@@ -6,6 +6,9 @@ name: Privacy gateway gates
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: gateway-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   gateway:
     runs-on: ubuntu-latest
@@ -52,3 +55,112 @@ jobs:
           path: artifacts/browser-smoke/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Disconnected synthetic runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(openssl rand -hex 32)
+          docker run --detach --name gateway-offline --network none --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges:true --env HOST=127.0.0.1 --env CLOUD_ENABLED=false --env GATEWAY_TOKEN="$token" privacy-gateway:verified
+          trap 'docker rm --force gateway-offline' EXIT
+          test "$(docker inspect --format '{{.HostConfig.NetworkMode}}' gateway-offline)" = none
+          docker exec -i gateway-offline node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const headers = { Authorization: `Bearer ${process.env.GATEWAY_TOKEN}`, 'Content-Type': 'application/json' };
+          const base = 'http://127.0.0.1:3000';
+          let ready = false;
+          for (let i = 0; i < 30; i++) {
+            try {
+              const response = await fetch(`${base}/api/status`, { headers });
+              assert.equal(response.status, 200);
+              const status = await response.json();
+              assert.equal(status.mode, 'synthetic');
+              assert.equal(status.cloudEnabled, false);
+              ready = true;
+              break;
+            } catch { await new Promise(resolve => setTimeout(resolve, 1000)); }
+          }
+          assert.ok(ready, 'Disconnected gateway failed to start');
+          const inspect = await fetch(`${base}/api/inspect`, { method: 'POST', headers, body: JSON.stringify({ prompt: 'Synthetic offline hello', mode: 'local_only' }) });
+          assert.equal(inspect.status, 200);
+          const inspected = await inspect.json();
+          assert.equal(inspected.route, 'local');
+          const response = await fetch(`${base}/api/local`, { method: 'POST', headers, body: JSON.stringify({ requestId: inspected.requestId }) });
+          assert.equal(response.status, 200);
+          const result = await response.json();
+          assert.equal(result.route, 'local');
+          assert.equal(result.provider, 'synthetic');
+          console.log('Disconnected synthetic runtime passed. No model inference was tested.');
+          NODE
+      - name: Package the verified image and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/offline-release
+          image_tag=privacy-handoff-gateway:v0.1.0-alpha.1-linux-amd64
+          test "$(docker image inspect privacy-gateway:verified --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          docker tag privacy-gateway:verified "$image_tag"
+          image_id=$(docker image inspect "$image_tag" --format '{{.Id}}')
+          docker save "$image_tag" | gzip -n > artifacts/offline-release/privacy-handoff-gateway-linux-amd64.tar.gz
+          gzip -t artifacts/offline-release/privacy-handoff-gateway-linux-amd64.tar.gz
+          gzip -dc artifacts/offline-release/privacy-handoff-gateway-linux-amd64.tar.gz | docker load
+          test "$(docker image inspect "$image_tag" --format '{{.Id}}')" = "$image_id"
+          git archive --format=tar --prefix=privacy-handoff-gateway/ HEAD | gzip -n > artifacts/offline-release/privacy-handoff-gateway-source.tar.gz
+          gzip -t artifacts/offline-release/privacy-handoff-gateway-source.tar.gz
+          jq -n --arg sourceCommit "$GITHUB_SHA" --arg imageId "$image_id" --arg imageTag "$image_tag" '{version:"0.1.0-alpha.1", sourceCommit:$sourceCommit, imageId:$imageId, imageTag:$imageTag, platform:"linux/amd64", validation:"synthetic tests, browser smoke and disconnected synthetic runtime; no live-model or customer acceptance certification"}' > artifacts/offline-release/manifest.json
+          cp .github/RELEASE-v0.1.0-alpha.1.md artifacts/offline-release/RELEASE-NOTES.md
+          (cd artifacts/offline-release && sha256sum privacy-handoff-gateway-linux-amd64.tar.gz privacy-handoff-gateway-source.tar.gz manifest.json RELEASE-NOTES.md > SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: offline-linux-amd64
+          path: artifacts/offline-release/
+          if-no-files-found: error
+          retention-days: 14
+  release:
+    needs: gateway
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release v0.1.0-alpha.1]')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: offline-linux-amd64
+          path: release
+      - name: Publish immutable pilot prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS
+          test "$(jq -r .sourceCommit manifest.json)" = "$GITHUB_SHA"
+          tag=v0.1.0-alpha.1
+          # An existing release/tag is never overwritten or silently repointed.
+          if gh release view "$tag" --json tagName,isDraft > /tmp/existing-release.json 2>/tmp/release-error; then
+            ref=$(gh api "repos/$GH_REPO/git/ref/tags/$tag")
+            test "$(printf '%s' "$ref" | jq -r .object.type)" = commit
+            test "$(printf '%s' "$ref" | jq -r .object.sha)" = "$GITHUB_SHA"
+            mkdir existing
+            gh release download "$tag" --pattern SHA256SUMS --dir existing
+            cmp SHA256SUMS existing/SHA256SUMS
+            test "$(jq -r .isDraft /tmp/existing-release.json)" = false
+            echo 'Exact release already published; nothing changed.'
+            exit 0
+          fi
+          # Only a verified not-found response permits creation; other API errors fail.
+          if ! grep -qi 'not found\|HTTP 404' /tmp/release-error; then
+            cat /tmp/release-error >&2
+            exit 1
+          fi
+          if ref=$(gh api "repos/$GH_REPO/git/ref/tags/$tag" 2>/tmp/tag-error); then
+            test "$(printf '%s' "$ref" | jq -r .object.type)" = commit
+            test "$(printf '%s' "$ref" | jq -r .object.sha)" = "$GITHUB_SHA"
+          elif ! grep -qi 'HTTP 404\|Not Found' /tmp/tag-error; then
+            cat /tmp/tag-error >&2
+            exit 1
+          fi
+          gh release create "$tag" privacy-handoff-gateway-linux-amd64.tar.gz privacy-handoff-gateway-source.tar.gz manifest.json SHA256SUMS RELEASE-NOTES.md --target "$GITHUB_SHA" --title 'Privacy Handoff Gateway v0.1.0-alpha.1' --notes-file RELEASE-NOTES.md --prerelease --latest=false

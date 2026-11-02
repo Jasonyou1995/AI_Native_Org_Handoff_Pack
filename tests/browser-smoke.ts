@@ -38,7 +38,14 @@ async function cleanup(): Promise<void> {
         child.kill("SIGKILL");
     }),
   );
-  await rm(profile, { recursive: true, force: true });
+  // Chromium subprocesses can finish profile writes just after the parent exits.
+  // Retry bounded transient directory races; persistent cleanup errors still fail CI.
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
 }
 const deadline = setTimeout(() => {
   console.error("Browser smoke exceeded the 120-second deadline");
@@ -110,7 +117,8 @@ try {
     "about:blank",
   ]);
   let port = "";
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // Shared CI runners can take longer than 10 seconds to launch sandboxed Chrome.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       port =
         (await readFile(`${profile}/DevToolsActivePort`, "utf8")).split(
