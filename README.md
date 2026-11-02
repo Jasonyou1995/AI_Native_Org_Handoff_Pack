@@ -36,6 +36,10 @@ TypeScript 负责 HTTP、策略、批准与 UI；默认 Rust 核心负责有界�
 
 ## First run · 第一次使用
 
+**Start here for personal use:** [one-minute guide and local model setup](docs/15-个人快速开始.md). On a prepared developer machine, `npm run personal` lets you choose a detected local model or a clearly labeled synthetic demo, with cloud disabled and a temporary token. Discovery checks two fixed localhost services, not every model installation.
+
+**个人使用从这里开始：**[一分钟指南与本地模型设置](docs/15-个人快速开始.md)。在已完成构建的开发机器运行 `npm run personal`，选择检测到的本地模型或明确标记的合成演示；云端关闭，令牌仅用于本次进程。检测仅覆盖两个固定本机服务，不承诺发现任意模型安装。
+
 [Documentation hub · 文档中心](docs/README.md) | [Offline installation and release · 离线安装与发布](docs/14-离线安装与发布.md)
 
 Prepare Docker Engine or Docker Desktop, Docker Compose and Git. `make` is a convenience entrypoint; see the [deployment guide](docs/10-部署演练.md) for direct Compose commands and offline preparation. Host Node.js is not required. The first build needs access to image and dependency sources.

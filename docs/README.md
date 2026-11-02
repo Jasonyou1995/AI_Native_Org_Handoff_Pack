@@ -8,6 +8,7 @@ One path from a synthetic demo to a controlled local deployment. This versioned 
 
 | Goal · 目标 | Read · 阅读 | Exit condition · 完成标准 |
 |---|---|---|
+| Start as one person · 一个人先用起来 | [Personal quick start / 个人快速开始](15-个人快速开始.md) | Complete a synthetic task, then deliberately connect a local model · 完成合成任务，再明确接入本地模型 |
 | Understand the product · 了解产品 | [README](../README.md), [mission / 使命](13-使命与协作宪章.md) | Explain the one problem and current limits · 能说清问题与边界 |
 | Try without a model or cloud key · 无模型、无云 key 体验 | [Deployment tutorial / 部署演练](10-部署演练.md), sections A–B | A synthetic request succeeds locally · 合成请求在本地成功 |
 | Connect your own model · 接入自有模型 | [Configuration and API / 配置与 API](07-本地隐私网关.md) | Actual model answers; shutdown fails without cloud fallback · 真模型回答，停机不会回退上云 |

@@ -12,6 +12,19 @@ interface GatewayStatus {
   scanner?: { engine: string; available: boolean };
   limits: { maxFiles: number; maxFileBytes: number; maxTotalBytes: number };
 }
+interface DiscoveredProvider {
+  id: "ollama" | "openai_compatible";
+  label: string;
+  status: "available" | "empty" | "unavailable" | "invalid_response";
+  url: string;
+  models: string[];
+}
+interface Discovery {
+  scope: "gateway_loopback";
+  requiresRestart: true;
+  configuredLocal: { url: string; model: string } | null;
+  providers: DiscoveredProvider[];
+}
 interface Inspection {
   requestId: string;
   route: "local" | "approval_required";
@@ -49,6 +62,12 @@ const inspectButton = element<HTMLButtonElement>("inspect");
 const localButton = element<HTMLButtonElement>("local-run");
 const cloudButton = element<HTMLButtonElement>("cloud-send");
 const fields = element<HTMLFieldSetElement>("task-fields");
+const detectButton = element<HTMLButtonElement>("detect-models");
+const demoButton = element<HTMLButtonElement>("start-demo");
+const modelSelect = element<HTMLSelectElement>("local-model");
+let discoveryBusy = false;
+let connectionVersion = 0;
+let modelChoices: { url: string; model: string }[] = [];
 let token = "";
 let status: GatewayStatus | undefined;
 let inspection: Inspection | undefined;
@@ -126,6 +145,8 @@ function setBusy(value: boolean): void {
   ))
     button.disabled = value;
   inspectButton.disabled = value || !status;
+  demoButton.disabled = value || !status;
+  detectButton.disabled = value || !status || discoveryBusy || !token;
   localButton.disabled = value;
   approval.disabled = value;
   cloudButton.disabled = value || !approval.checked || !inspection;
@@ -186,6 +207,128 @@ function parseStatus(data: unknown): GatewayStatus {
   }
   return data as unknown as GatewayStatus;
 }
+function clearSetup(): void {
+  connectionVersion += 1;
+  modelChoices = [];
+  modelSelect.replaceChildren();
+  element("model-services").replaceChildren();
+  element("model-config-panel").hidden = true;
+  element("local-env-preview").textContent = "";
+  element("setup-mode").textContent = "先连接网关";
+  element("setup-summary").textContent =
+    "连接后可以试用合成演示，或检查已经启动的本地模型。";
+  element("discovery-status").textContent =
+    "只检查网关所在环境的两个固定本机端口，不扫描你的局域网。";
+  discoveryBusy = false;
+  detectButton.disabled = true;
+  demoButton.disabled = true;
+}
+function parseDiscovery(data: unknown): Discovery {
+  if (
+    !isObject(data) ||
+    data.scope !== "gateway_loopback" ||
+    data.requiresRestart !== true ||
+    !Array.isArray(data.providers) ||
+    data.providers.length > 2
+  )
+    throw new Error("本地模型检测响应格式无效。");
+  for (const value of data.providers) {
+    if (
+      !isObject(value) ||
+      !["ollama", "openai_compatible"].includes(String(value.id)) ||
+      typeof value.label !== "string" ||
+      !["available", "empty", "unavailable", "invalid_response"].includes(
+        String(value.status),
+      ) ||
+      ![
+        "http://127.0.0.1:11434/v1/chat/completions",
+        "http://127.0.0.1:1234/v1/chat/completions",
+      ].includes(String(value.url)) ||
+      !Array.isArray(value.models) ||
+      value.models.length > 100 ||
+      !value.models.every(
+        (model: unknown) =>
+          typeof model === "string" &&
+          /^[A-Za-z0-9._:/@+-]{1,200}$/.test(model),
+      )
+    )
+      throw new Error("本地模型列表无效，未生成配置。");
+  }
+  return data as unknown as Discovery;
+}
+function renderModelConfig(): void {
+  const choice = modelChoices[Number(modelSelect.value)];
+  element("local-env-preview").textContent = choice
+    ? `LOCAL_URL=${choice.url}\nLOCAL_MODEL=${choice.model}\nCLOUD_ENABLED=false`
+    : "";
+}
+async function discoverModels(): Promise<void> {
+  if (!status || !token || discoveryBusy) return;
+  const currentConnection = connectionVersion;
+  discoveryBusy = true;
+  detectButton.disabled = true;
+  element("discovery-status").textContent =
+    "正在检查两个固定本机服务，没有发送任务内容…";
+  try {
+    const data = parseDiscovery(await request("/api/setup/discover"));
+    if (currentConnection !== connectionVersion) return;
+    const serviceLabels = {
+      available: "已发现模型，可生成本地配置",
+      empty: "服务响应正常，但尚无可用模型",
+      unavailable: "未响应或不可达",
+      invalid_response: "响应不兼容，未使用",
+    };
+    element("model-services").replaceChildren(
+      ...data.providers.map((provider) => {
+        const item = document.createElement("li");
+        item.textContent = `${provider.label} · ${serviceLabels[provider.status]} · ${provider.models.length} 个模型`;
+        return item;
+      }),
+    );
+    modelChoices = data.providers.flatMap((provider) =>
+      provider.status === "available"
+        ? provider.models.map((model) => ({ url: provider.url, model }))
+        : [],
+    );
+    modelSelect.replaceChildren(
+      ...modelChoices.map((choice, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${choice.model} · ${choice.url.includes(":11434/") ? "Ollama" : "OpenAI compatible"}`;
+        return option;
+      }),
+    );
+    element("model-config-panel").hidden = modelChoices.length === 0;
+    renderModelConfig();
+    element("discovery-status").textContent = modelChoices.length
+      ? `发现 ${modelChoices.length} 个候选模型。检测不改变当前提供方，不代表模型已完成推理验证。`
+      : "没有检测到可用模型。你仍可以试用合成演示；若使用 Docker，请展开下方设置说明。";
+  } catch (error) {
+    if (currentConnection !== connectionVersion) return;
+    modelChoices = [];
+    modelSelect.replaceChildren();
+    element("model-services").replaceChildren();
+    element("model-config-panel").hidden = true;
+    element("local-env-preview").textContent = "";
+    element("discovery-status").textContent =
+      `${errorMessage(error)} 仍可使用已经配置的处理路径。`;
+  } finally {
+    if (currentConnection === connectionVersion) {
+      discoveryBusy = false;
+      detectButton.disabled = busy || !status || !token;
+    }
+  }
+}
+detectButton.addEventListener("click", () => {
+  void discoverModels();
+});
+modelSelect.addEventListener("change", renderModelConfig);
+demoButton.addEventListener("click", () => {
+  if (busy || !status) return;
+  element("example").click();
+  inspectButton.focus();
+  inspectButton.scrollIntoView({ block: "nearest" });
+});
 function parseInspection(data: unknown): Inspection {
   if (
     !isObject(data) ||
@@ -326,6 +469,7 @@ element<HTMLFormElement>("connection-form").addEventListener(
     event.preventDefault();
     if (busy) return;
     invalidate();
+    clearSetup();
     status = undefined;
     token = tokenInput.value.trim();
     tokenInput.value = "";
@@ -350,6 +494,15 @@ element<HTMLFormElement>("connection-form").addEventListener(
       element("scanner-config").textContent = status.scanner
         ? `${status.scanner.engine === "rust" ? "Rust 核心" : "TypeScript 显式兼容模式"} · ${status.scanner.available ? "可用" : "不可用，检测将被阻止"}`
         : "服务端未报告";
+      element("setup-mode").textContent =
+        status.mode === "synthetic" ? "合成演示 · Demo" : "本地提供方已配置";
+      element("setup-summary").textContent =
+        status.mode === "synthetic"
+          ? "现在可以试用合成演示，它不是真实 AI 回答。检测到模型后，配置并重启才会启用真实推理。"
+          : "当前网关已配置本地提供方。候选模型检测不会改变它；运行一个虚构任务才能验证实际推理。";
+      if (!token)
+        element("discovery-status").textContent =
+          "合成演示可继续。模型检测需要配置 GATEWAY_TOKEN 并用该令牌连接。";
       notify("已连接。默认仅本地处理；切换混合路径不会自动外发。");
     } catch (error) {
       token = "";
@@ -367,6 +520,7 @@ element<HTMLFormElement>("connection-form").addEventListener(
     } finally {
       setBusy(false);
     }
+    if (status && token) void discoverModels();
   },
 );
 promptInput.addEventListener("input", () => {
@@ -551,6 +705,7 @@ element("reset").addEventListener("click", () => {
   token = "";
   tokenInput.value = "";
   status = undefined;
+  clearSetup();
   classification.value = "unknown";
   const localMode = document.querySelector<HTMLInputElement>(
     'input[value="local_only"]',

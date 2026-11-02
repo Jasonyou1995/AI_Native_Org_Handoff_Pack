@@ -153,3 +153,12 @@ main{padding:0 24px 24px}
 .review-details code{font-size:10px}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}
 }
+
+.onboarding{padding:21px 24px;margin-bottom:20px;background:#eaf1e4;border:1px solid #d5e2ca;border-radius:10px}
+.onboarding h2{font-size:18px}.onboarding p:not(.eyebrow){color:var(--muted);font-size:12px;line-height:1.7}
+.onboarding ol{list-style:none;padding:0;margin:18px 0 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.onboarding li{border-left:2px solid #b6cba9;padding-left:12px}.onboarding strong{display:block;font-size:12px}.onboarding li span{display:block;color:var(--muted);font-size:11px;line-height:1.7;margin-top:6px}
+.setup-card{margin-top:16px}.setup-card .card-heading{margin-bottom:13px}.setup-actions{display:flex;flex-wrap:wrap;gap:10px}.setup-actions button{font-size:12px}
+.model-services{list-style:none;padding:0;margin:0;display:grid;gap:8px}.model-services li{padding:10px 12px;border-radius:6px;background:#f5f7f3;font-size:11px;line-height:1.7;overflow-wrap:anywhere}
+#model-config-panel{margin-top:18px}#local-env-preview{min-height:70px;margin-top:12px}.setup-help{margin-top:16px;font-size:11px;line-height:1.8;color:var(--muted)}.setup-help summary{cursor:pointer;color:var(--green);font-weight:550}.setup-help p{margin:10px 0 0}
+@media(max-width:700px){.onboarding ol{grid-template-columns:1fr;gap:14px}.onboarding{padding:19px}.setup-card .card-heading{flex-wrap:wrap}.setup-actions button{flex:1;min-width:160px}}
