@@ -1,0 +1,19 @@
+# Copyright 2026 Jason You
+# SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+# See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+
+.git
+.env
+.env.*
+!.env.example
+node_modules
+dist
+.local
+.claude
+.codex
+.agents
+bench/results
+coverage
+
+rust-core/target/
+rust-core/target-docker/

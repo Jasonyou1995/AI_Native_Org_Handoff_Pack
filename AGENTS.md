@@ -1,5 +1,47 @@
 # AGENTS.md: guide and rules for any AI coder (Claude Code, Codex, Cursor, others)
 
+## Current product scope, 2026-11-02
+
+The maintainer requests bilingual English and Chinese mission, collaboration,
+and commercial-model documentation. For README and those governance documents,
+this supersedes the historical Chinese-only prose rule below. Keep the core
+mission to one sentence with an equivalent translation. Do not present privacy
+controls as guarantees about employment, intellectual-property ownership,
+administrator access, market adoption, or revenue.
+
+### Current stack and verification override
+
+The maintainer has approved host-toolchain development and testing when Docker
+is unavailable. Docker packaging and container verification remain required
+deployment gates. The gateway uses TypeScript for application orchestration
+and UI, Rust for the bounded privacy-scanning core, and optional Python examples
+where AI integration benefits from them. Prefer TypeScript over adding a
+blocking integration. These current instructions supersede the historical
+TypeScript-only and Docker-only development rules below for this gateway slice.
+Do not silently fall back to another scanner after a Rust scanning failure.
+Report each host, Rust, browser, container, and live-model check separately.
+
+The current implementation priority is a local-first privacy gateway for enterprise
+model handoff. Read `spec/PRIVACY-GATEWAY-SPEC.md`, `README.md`, and
+`docs/07-本地隐私网关.md` for this slice. The original handoff-token and
+coordination-benchmark specifications below remain preserved research plans,
+not claims about implemented gateway behavior. Do not represent gateway tests
+as completion of the original ten lifecycle scenarios.
+
+New behavior must keep unknown and confidential content local by default.
+Model classifications are advisory, never authority to widen egress permissions.
+Never send real user or enterprise data to a provider during development.
+Use synthetic fixtures and mocked providers, and distinguish those tests from
+live-model, security, deployment, and customer acceptance validation.
+
+The historical Apache-2.0 grant remains valid. Check the current licensing scope
+document before applying a license header to newly added gateway code. Do not
+relicense old files or third-party dependencies by implication.
+
+This product must not claim zero leakage, universal file/model support,
+production certification, guaranteed performance, revenue, or popularity.
+Record measured results and explicit unsupported cases instead.
+
 Read this first, every session. Then read `spec/HANDOFF-PACK-SPEC.md` and `docs/00-总体规划.md`.
 
 ## What this project is

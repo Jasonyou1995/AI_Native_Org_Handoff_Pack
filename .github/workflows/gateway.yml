@@ -1,0 +1,54 @@
+# Copyright 2026 Jason You
+# SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+# See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+
+name: Privacy gateway gates
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make install
+      - run: make rust-build
+      - run: make rust-test
+      - run: make check
+      - run: make test
+      - run: make attacks
+      - run: make verify
+      - run: make build
+      - run: docker build -t privacy-gateway:verified .
+      - name: Synthetic image smoke test
+        shell: bash
+        run: |
+          token=$(openssl rand -hex 32)
+          docker run --detach --name gateway-smoke --publish 127.0.0.1:3000:3000 --env HOST=0.0.0.0 --env GATEWAY_TOKEN="$token" privacy-gateway:verified
+          trap 'docker rm --force gateway-smoke' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent -H "Authorization: Bearer $token" http://127.0.0.1:3000/api/status > /tmp/status.json; then break; fi
+            sleep 1
+          done
+          jq -e '.mode == "synthetic" and .cloudEnabled == false' /tmp/status.json
+          curl --fail --silent http://127.0.0.1:3000/ | grep -q '<html'
+          inspection=$(curl --fail --silent -H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data '{"prompt":"Synthetic hello","mode":"local_only"}' http://127.0.0.1:3000/api/inspect)
+          request_id=$(printf '%s' "$inspection" | jq -er '.requestId')
+          curl --fail --silent -H "Authorization: Bearer $token" -H 'Content-Type: application/json' --data "{\"requestId\":\"$request_id\"}" http://127.0.0.1:3000/api/local | jq -e '.route == "local" and .provider == "synthetic"'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.2'
+      - name: Browser smoke with synthetic data
+        env:
+          PRIVACY_SCANNER_BIN: ${{ github.workspace }}/rust-core/target-docker/release/privacy-scanner
+        run: |
+          export CHROME_BIN="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
+          test -n "$CHROME_BIN"
+          node --import tsx tests/browser-smoke.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: synthetic-browser-checks
+          path: artifacts/browser-smoke/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,28 @@
+# Copyright 2026 Jason You
+# SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+# See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+
+name: Bootstrap dependency lock in Docker
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/local-first-privacy-gateway]
+    paths: [package.json, .github/workflows/bootstrap-lock.yml]
+permissions:
+  contents: read
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check lock state
+        id: lock
+        run: test ! -f package-lock.json && echo "needed=true" >> "$GITHUB_OUTPUT" || echo "needed=false" >> "$GITHUB_OUTPUT"
+      - if: steps.lock.outputs.needed == 'true'
+        run: docker run --rm -v "$PWD:/app" -w /app node:24.22.2-bookworm-slim npm install --package-lock-only --ignore-scripts
+      - if: steps.lock.outputs.needed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-lock
+          path: package-lock.json
+          retention-days: 1
