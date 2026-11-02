@@ -38,7 +38,14 @@ async function cleanup(): Promise<void> {
         child.kill("SIGKILL");
     }),
   );
-  await rm(profile, { recursive: true, force: true });
+  // Chromium subprocesses can finish profile writes just after the parent exits.
+  // Retry bounded transient directory races; persistent cleanup errors still fail CI.
+  await rm(profile, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
 }
 const deadline = setTimeout(() => {
   console.error("Browser smoke exceeded the 120-second deadline");
