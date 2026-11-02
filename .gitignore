@@ -45,3 +45,9 @@ bench/.ledger/
 .venv*/
 __pycache__/
 *.egg-info/
+
+# Private local working folders. Never committed.
+# These are personal working folders. If you want to track your own equivalents,
+# remove these two lines or use `git add -f`. That choice is yours.
+/paper/
+/plan/
