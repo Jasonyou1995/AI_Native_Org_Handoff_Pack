@@ -41,6 +41,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.22.2'
+      - name: Install CJK fonts for browser visual checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk
       - name: Browser smoke with synthetic data
         env:
           PRIVACY_SCANNER_BIN: ${{ github.workspace }}/rust-core/target-docker/release/privacy-scanner
