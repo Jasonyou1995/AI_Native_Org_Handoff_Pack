@@ -1,0 +1,121 @@
+Handoff Privacy Gateway Community License 1.0
+License identifier: LicenseRef-Handoff-Community-1.0
+Copyright 2026 Jason You
+
+1. Scope and rights holder
+
+These terms apply only to original material expressly identified as licensed
+under this license by LICENSE-SCOPE.md and applicable file notices in this
+distribution (the "Software"). Jason You is the "Licensor", only to the extent that he owns or
+is authorized to license the relevant rights. Separately identified material,
+including Apache-2.0 material and third-party dependencies, remains subject to
+its own license. These terms do not replace or restrict licenses previously
+granted for that material. Moving or copying material into this directory does
+not change its existing license.
+
+2. Permitted use and commercialization
+
+"You" means an individual or organization. "Internal Use" means use for your
+own activities and internal operations, including commercial business
+operations, evaluation, development, research, teaching, and production. Your
+employees, students, researchers, and contractors acting on your behalf may
+use the Software for those activities. Internal business value, cost savings,
+revenue from your ordinary business, or ordinary tuition do not by themselves
+make that use restricted. You may use the Software internally to produce work
+or provide professional services to clients, provided you do not supply clients
+with the Software or access to its functionality as a product or service.
+
+"Restricted Commercialization" means selling, renting, licensing for a fee,
+or otherwise charging for the Software or access to its functionality;
+providing it as a paid hosted or managed service; or distributing, embedding,
+or exposing its functionality to customers as part of a commercial product or
+service, including a paid bundle with no separately stated Software charge.
+A fee specifically for students' or other users' access to the Software is
+Restricted Commercialization; ordinary tuition for education is not.
+
+Charging for installation, configuration, integration assistance, training,
+maintenance, or support of an end user's own authorized Internal Use is not
+Restricted Commercialization, provided the service does not include reselling
+Software access or providing a hosted or managed Software service. A contractor
+may administer the end user's deployment on the end user's behalf under this
+exception. The end user remains responsible for its use under this license.
+
+3. Permission
+
+Subject to these terms, the Licensor grants You a worldwide, non-exclusive,
+royalty-free copyright license to use, run, reproduce, and modify the Software
+for personal use, Internal Use, and other uses that are not Restricted
+Commercialization. Organizations of any size, universities, nonprofits, and
+government bodies may exercise these permissions without contacting the
+Licensor or purchasing a license. Free access for community users is permitted
+unless it forms part of a Restricted Commercialization offering.
+
+You may share original or modified copies without charge, outside Restricted
+Commercialization, provided you retain this license and applicable copyright
+and attribution notices, identify your modifications, and do not impose terms
+that purport to remove these conditions from the Licensor's material. Each
+recipient receives any license to the Licensor's material directly from the
+Licensor under these terms, not by sublicense. Distributors may not grant
+Restricted Commercialization rights to the Licensor's material.
+
+No provision limits rights that applicable law grants independently of this
+license. Use of third-party services with the Software remains subject to those
+services' own terms and charges; this license does not authorize access to them.
+
+4. Separate commercial licensing
+
+Restricted Commercialization requires a separate written license from the
+relevant rights holder before that activity begins. Contact Jason You at
+jason.you1995@gmail.com. Sending an inquiry, receiving an acknowledgment, or
+paying an unagreed amount does not grant a license. Price, support, term,
+territory, deployment scope, redistribution, and other commercial terms must
+be expressly agreed in writing. This document grants no such rights. Optional
+paid support or services may also be agreed for uses already permitted here;
+buying those services is not a condition of the free permissions above.
+
+5. Intellectual property
+
+The Licensor retains ownership of the Licensor's material. Contributors retain
+ownership of their own work unless they separately agree otherwise. This
+license does not assign contributor copyrights to the Licensor or give the
+Licensor rights in third-party material. No trademark or endorsement license
+is granted, except reasonable identification of the Software and its origin.
+
+For the uses permitted in section 3, the Licensor grants a non-exclusive,
+royalty-free patent license only under claims the Licensor can license that
+are necessarily infringed by the unmodified Software as supplied by the
+Licensor. No broader patent rights are implied. This patent license terminates
+if you initiate patent litigation alleging that the Software infringes a
+patent. All rights not expressly granted are reserved.
+
+6. Term and compliance
+
+The licenses granted here continue for the duration of the applicable rights
+while you comply with these terms. They are not revocable merely because the
+Licensor later publishes different terms. A breach suspends the affected
+permissions. For a first breach, those permissions are reinstated if you stop
+the unauthorized use, remedy the breach where possible, and comply fully
+within 30 days after receiving written notice from the Licensor. Otherwise
+they terminate. Reinstatement does not grant permission for excluded uses or
+waive liability for past breaches. Any further reinstatement must be agreed in
+writing. Termination does not limit independent statutory rights or separate
+licenses, including prior Apache-2.0 grants.
+
+7. No warranty; limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE SOFTWARE IS PROVIDED
+"AS IS", WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND
+NONINFRINGEMENT. TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE
+LICENSOR IS NOT LIABLE FOR DAMAGES ARISING FROM THE SOFTWARE OR THIS LICENSE,
+WHETHER IN CONTRACT, TORT, OR OTHERWISE, EVEN IF ADVISED OF THEIR POSSIBILITY.
+NOTHING EXCLUDES LIABILITY OR RIGHTS THAT APPLICABLE LAW DOES NOT ALLOW TO BE
+EXCLUDED. NO SECURITY, PRIVACY, REGULATORY COMPLIANCE, OR FITNESS OUTCOME IS
+PROMISED.
+
+8. Interpretation
+
+This English text states the license terms. Summaries and translations are
+informational only. If a provision is unenforceable, the remaining provisions
+continue to the extent permitted by law. This license contains no requirement
+to transmit data, activate online, or permit audits of a user's systems.

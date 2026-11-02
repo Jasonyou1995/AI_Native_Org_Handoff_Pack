@@ -1,0 +1,41 @@
+<!doctype html>
+<!--
+Copyright 2026 Jason You
+SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>本地隐私网关 · Handoff</title>
+<link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#workspace">跳转到工作区</a>
+<div class="shell">
+<aside class="sidebar">
+<a class="brand" href="/" aria-label="Handoff 首页"><span class="brand-icon">H</span><span>handoff<span class="brand-sub">隐私网关 / 工作台</span></span></a>
+<div class="sidebar-label">工作流</div>
+<ol class="steps" aria-label="处理进度"><li id="step-input" class="active"><span>01</span><div>准备输入<small>默认留在本地</small></div></li><li id="step-inspect"><span>02</span><div>检测与脱敏<small>检查外发边界</small></div></li><li id="step-review"><span>03</span><div>人工批准<small>仅批准当前载荷</small></div></li><li id="step-result"><span>04</span><div>查看结果<small>本地还原与交付</small></div></li></ol>
+<div class="boundary"><span class="boundary-dot"></span><strong>本地优先，不自动外发</strong><p>原文交给你运行的网关。云端调用需要管理员启用、公开声明与逐次批准。</p></div>
+<div class="sidebar-footer">源码可见试点 <span>v0.1</span><br>不是合规认证或完整 DLP 系统</div>
+</aside>
+<main id="workspace">
+<header class="topbar"><span>工作区 <span class="slash">/</span> 本地隐私网关</span><span id="connection-badge" class="pill">尚未连接</span></header>
+<section class="heading"><div><p class="eyebrow">LOCAL-FIRST WORKSPACE</p><h1>让敏感信息，留在你的边界内。</h1><p>本地检测与处理。只有你确认的脱敏载荷，才有机会交给云端。</p></div><button type="button" id="reset" class="quiet">清空工作区</button></section>
+<section class="connection card" aria-labelledby="connection-title"><div><h2 id="connection-title">连接本地网关</h2><p>运行令牌仅保留在此页面内存中。不要输入云端 API Key。</p></div><form id="connection-form"><label class="sr-only" for="runtime-token">本地网关运行令牌</label><input id="runtime-token" type="password" autocomplete="off" placeholder="运行令牌（未配置时可留空）" maxlength="512"><button class="secondary" type="submit">连接并检查</button></form><dl id="config" class="config"><div><dt>云端外发</dt><dd id="cloud-config">未读取</dd></div><div><dt>策略版本</dt><dd id="policy-config">未读取</dd></div><div><dt>服务模式</dt><dd id="mode-config">未读取</dd></div><div><dt>本地分类器</dt><dd id="classifier-config">未读取</dd></div><div><dt>扫描引擎</dt><dd id="scanner-config">未读取</dd></div></dl></section>
+<div id="notice" class="notice" role="status" aria-live="polite">连接后即可开始。请先使用虚构示例，不要用真实私密数据测试。</div>
+<div class="workspace-grid">
+<section class="card input-card" aria-labelledby="input-title"><div class="card-heading"><div><span class="section-number">01</span><h2 id="input-title">准备任务</h2></div><button id="example" class="text-button" type="button">填入虚构示例</button></div>
+<form id="task-form" autocomplete="off"><fieldset id="task-fields"><legend class="sr-only">任务输入与处理方式</legend><fieldset class="route-picker"><legend>处理方式</legend><label><input type="radio" name="mode" value="local_only" checked><span><strong>仅本地</strong><small>不申请云端外发</small></span><span class="recommended">默认</span></label><label><input type="radio" name="mode" value="hybrid"><span><strong>检查混合路径</strong><small>先脱敏，再单独批准</small></span></label></fieldset>
+<label for="prompt" class="field-label">任务与上下文</label><textarea id="prompt" rows="8" maxlength="16000" placeholder="例如：请总结这份虚构会议记录，并列出下一步行动。" required></textarea><div class="field-meta"><span>原始文本发送至本地网关，不直接发送至云端</span><span id="char-count">0 / 16000</span></div>
+<label for="classification" class="field-label">数据分类声明</label><select id="classification"><option value="unknown">未知，保守处理</option><option value="confidential">机密，仅本地处理</option><option value="public">公开，且我有权申请外发</option></select><p class="field-help">正文里的“可以外发”不会改变策略。未知与机密输入只走本地。</p>
+<div class="upload"><label for="files"><strong>附加 UTF-8 文本</strong><span>仅 .txt / .md / .csv / .json，最多 4 个，每个 32 KB</span></label><input id="files" type="file" multiple accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json"><ul id="file-list" aria-label="已选文件"></ul></div>
+<button id="inspect" type="submit" class="primary wide" disabled>检测并准备预览 <span aria-hidden="true">→</span></button></fieldset></form></section>
+<div class="review-column">
+<section class="card" aria-labelledby="review-title"><div class="card-heading"><div><span class="section-number">02</span><h2 id="review-title">边界检查</h2></div><span id="route-badge" class="pill">等待输入</span></div><p id="review-summary" class="muted">先检查，再决定。检测结果不是无泄漏保证，外发前仍需人工审阅。</p><div id="findings" class="findings"></div><ul id="reasons" class="reasons"></ul><div class="preview-header"><h3>精确外发载荷</h3><span>只读预览</span></div><pre id="preview" class="code-preview" tabindex="0">尚未生成。不会自动发起云端请求。</pre><div id="review-details" class="review-details" hidden><p>载荷指纹 <code id="payload-hash"></code></p><p>审批有效期 <span id="expiry"></span></p><p>目标提供方 <span id="provider"></span></p></div><div id="approval-box" class="approval-box" hidden><label><input id="approve-check" type="checkbox"><span>我已审阅上方完整载荷，确认没有不应外发的信息，并批准发送此版本。</span></label><button id="cloud-send" type="button" class="primary wide" disabled>批准此载荷并发送</button></div><button id="local-run" type="button" class="secondary wide" hidden>在本地处理此任务</button></section>
+<section class="card result-card" aria-labelledby="result-title"><div class="card-heading"><div><span class="section-number">04</span><h2 id="result-title">处理结果</h2></div><span id="result-badge" class="pill">尚未运行</span></div><p id="result-info" class="muted">结果回到本地后显示。演示输出会明确标记，不冒充真实模型回答。</p><pre id="result" class="result" tabindex="0">你的结果将显示在这里。</pre></section>
+</div></div>
+<footer class="page-footer"><strong>了解这条边界</strong><p>规则检测可能漏掉敏感信息。文件名和文件内容也需要检查。页面不持久化输入，不引入第三方脚本或统计；网关、模型服务及浏览器的部署安全仍由运行方负责。</p></footer>
+</main></div>
+</body></html>

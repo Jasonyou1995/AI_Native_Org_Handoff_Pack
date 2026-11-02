@@ -1,0 +1,20 @@
+# Copyright 2026 Jason You
+# SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+# See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+
+[package]
+name = "privacy-scanner"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+license-file = "../LICENSES/Handoff-Community-1.0.txt"
+
+[dependencies]
+regex = "=1.12.2"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+
+[profile.release]
+strip = true
+panic = "abort"
