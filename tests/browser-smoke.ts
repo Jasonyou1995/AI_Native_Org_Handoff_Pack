@@ -117,7 +117,8 @@ try {
     "about:blank",
   ]);
   let port = "";
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  // Shared CI runners can take longer than 10 seconds to launch sandboxed Chrome.
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     try {
       port =
         (await readFile(`${profile}/DevToolsActivePort`, "utf8")).split(
