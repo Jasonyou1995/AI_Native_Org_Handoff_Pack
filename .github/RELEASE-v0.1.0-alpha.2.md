@@ -12,9 +12,9 @@ The host launcher `npm run personal` discovers supported existing local Ollama/O
 
 个人启动器检测受支持的本机模型服务，也提供合成演示。云端默认关闭；模型服务与权重需要提前准备。演示用于检查流程，不代表真实 AI 推理。
 
-The guided task, review and result screens, simplified settings, and revised onboarding are the intended redesign for this pilot. Their implementation and validation are pending integration; this draft does not yet claim those changes are shipped. Before publication, replace this paragraph with the verified behavior of the release commit.
+The personal workspace uses separate task, review and result screens, with model selection in Settings and a short first-use guide. Switching a model invalidates prior previews. Cloud handoff still requires review and explicit approval.
 
-本次计划把任务、检查和结果分开显示，将高级选项收进设置，并更新操作引导。以上界面改动仍待集成验证；发布前应以实际通过验证的版本更新此段说明。
+任务、检查与结果分别显示，模型选择位于设置中，并提供首次使用引导。切换模型会使先前预览失效；云端交接仍需检查和明确批准。
 
 Read `docs/15-个人快速开始.md`. Host model discovery runs on the computer hosting the gateway; discovery inside Docker sees container localhost, not the host laptop. A real local model must be tested separately from the synthetic demo.
 
