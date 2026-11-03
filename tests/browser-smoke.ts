@@ -299,7 +299,8 @@ try {
     })();`,
   });
   await send("Page.navigate", { url: origin });
-  await wait('document.querySelector("#help-dialog").open');
+  // Navigation can resolve before the document and module script are ready.
+  await wait('document.querySelector("#help-dialog")?.open === true');
   await click("#help-next");
   assert.equal(
     await evaluate('document.querySelector("#help-count").textContent'),
@@ -614,7 +615,7 @@ try {
     "No external browser requests",
   );
   await send("Page.reload");
-  await wait('document.querySelector("#help-dialog")?.open');
+  await wait('document.querySelector("#help-dialog")?.open === true');
   assert.equal(
     await evaluate('document.querySelector("#inspect").disabled'),
     true,
