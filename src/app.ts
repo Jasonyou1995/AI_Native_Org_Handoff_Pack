@@ -11,7 +11,45 @@ import type { Config } from "./config.js";
 import { discoverLocalModels } from "./discovery.js";
 import { Gateway, GatewayError, limits } from "./gateway.js";
 import { scannerStatus } from "./policy.js";
-export function createApp(config: Config, gateway = new Gateway(config)) {
+export function createApp(
+  config: Config,
+  gateway = new Gateway(config),
+  options: { personalSession?: boolean } = {},
+) {
+  config = structuredClone(config);
+  const runtimeSelection = options.personalSession === true;
+  if (
+    runtimeSelection &&
+    (!config.auth ||
+      config.host !== "127.0.0.1" ||
+      config.cloudEnabled ||
+      config.cloud ||
+      config.classifier ||
+      config.local?.key)
+  ) {
+    gateway.dispose();
+    throw new Error(
+      "Personal sessions require authenticated loopback and no cloud or classifier configuration",
+    );
+  }
+  let generation = 0;
+  let selectionSequence = 0;
+  let disposed = false;
+  const configuredLocal = () =>
+    config.local ? { url: config.local.url, model: config.local.model } : null;
+  const current = () => {
+    if (disposed) throw new GatewayError("session_changed", 409);
+    const captured = gateway;
+    const version = generation;
+    return {
+      gateway: captured,
+      checked<T>(value: T): T {
+        if (disposed || version !== generation)
+          throw new GatewayError("session_changed", 409);
+        return value;
+      },
+    };
+  };
   const app = new Hono();
   let windowStart = Date.now();
   let count = 0;
@@ -60,6 +98,10 @@ export function createApp(config: Config, gateway = new Gateway(config)) {
   );
   app.get("/api/status", (c) =>
     c.json({
+      setup: {
+        runtimeSelection,
+        configuredLocal: runtimeSelection ? configuredLocal() : null,
+      },
       mode: config.local ? "local_provider" : "synthetic",
       scanner: scannerStatus(),
       cloudEnabled: config.cloudEnabled,
@@ -83,10 +125,8 @@ export function createApp(config: Config, gateway = new Gateway(config)) {
     }
     return c.json({
       scope: "gateway_loopback",
-      requiresRestart: true,
-      configuredLocal: config.local
-        ? { url: config.local.url, model: config.local.model }
-        : null,
+      requiresRestart: !runtimeSelection,
+      configuredLocal: configuredLocal(),
       providers: await discovery,
     });
   });
@@ -103,25 +143,87 @@ export function createApp(config: Config, gateway = new Gateway(config)) {
   const requestSchema = z
     .object({ requestId: z.string().regex(/^[a-f0-9]{48}$/) })
     .strict();
-  app.post("/api/inspect", async (c) =>
-    c.json(await gateway.inspectReviewed(await body(c))),
-  );
+  let selectionDiscovery: ReturnType<typeof discoverLocalModels> | undefined;
+  app.post("/api/setup/select", async (c) => {
+    if (!runtimeSelection)
+      throw new GatewayError("runtime_selection_disabled", 403);
+    if (disposed) throw new GatewayError("session_changed", 409);
+    const data = z
+      .object({
+        providerId: z.enum(["ollama", "openai_compatible"]),
+        model: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$/),
+      })
+      .strict()
+      .parse(await body(c));
+    const sequence = ++selectionSequence;
+    // Revalidate on each selection, sharing only concurrent probes, never cached results.
+    selectionDiscovery ??= discoverLocalModels();
+    const pending = selectionDiscovery;
+    let providers: Awaited<typeof pending>;
+    try {
+      providers = await pending;
+    } finally {
+      if (selectionDiscovery === pending) selectionDiscovery = undefined;
+    }
+    if (disposed) throw new GatewayError("session_changed", 409);
+    if (sequence !== selectionSequence)
+      throw new GatewayError("selection_superseded", 409);
+    const provider = providers.find(
+      (candidate) =>
+        candidate.id === data.providerId &&
+        candidate.status === "available" &&
+        candidate.models.includes(data.model),
+    );
+    if (!provider) throw new GatewayError("model_unavailable", 409);
+    const nextConfig: Config = {
+      ...config,
+      local: { url: provider.url, model: data.model },
+      cloudEnabled: false,
+      cloud: undefined,
+      classifier: undefined,
+    };
+    const replacement = new Gateway(nextConfig);
+    const previous = gateway;
+    gateway = replacement;
+    config = nextConfig;
+    generation++;
+    previous.dispose();
+    discovery = undefined;
+    return c.json({
+      mode: "local_provider",
+      configuredLocal: configuredLocal(),
+      cloudEnabled: false,
+    });
+  });
+  app.post("/api/inspect", async (c) => {
+    const session = current();
+    return c.json(
+      session.checked(await session.gateway.inspectReviewed(await body(c))),
+    );
+  });
   app.post("/api/local", async (c) => {
+    const session = current();
     const data = requestSchema.parse(await body(c));
-    return c.json(await gateway.local(data.requestId));
+    return c.json(session.checked(await session.gateway.local(data.requestId)));
   });
   app.post("/api/approve", async (c) => {
+    const session = current();
     const data = requestSchema
       .extend({ payloadHash: z.string().regex(/^[a-f0-9]{64}$/) })
       .parse(await body(c));
-    return c.json(gateway.approve(data.requestId, data.payloadHash));
+    return c.json(
+      session.checked(
+        session.gateway.approve(data.requestId, data.payloadHash),
+      ),
+    );
   });
   app.post("/api/cloud", async (c) => {
+    const session = current();
     const data = z
       .object({ receipt: z.string().regex(/^[a-f0-9]{64}$/) })
       .strict()
       .parse(await body(c));
-    return c.json(await gateway.cloud(data.receipt));
+    return c.json(session.checked(await session.gateway.cloud(data.receipt)));
   });
   for (const [path, file, type] of [
     ["/", "demo/index.html", "text/html; charset=utf-8"],
@@ -141,5 +243,12 @@ export function createApp(config: Config, gateway = new Gateway(config)) {
     return c.json({ error: "internal_error" }, 500);
   });
   app.notFound((c) => c.json({ error: "not_found" }, 404));
-  return app;
+  return Object.assign(app, {
+    dispose() {
+      disposed = true;
+      generation++;
+      selectionSequence++;
+      gateway.dispose();
+    },
+  });
 }

@@ -69,6 +69,8 @@ export type Audit = {
   findingCount?: number;
 };
 export class Gateway {
+  private disposed = false;
+  private active = new Set<Request>();
   private requests = new Map<string, Request>();
   private receipts = new Map<string, Receipt>();
   private config: Config;
@@ -89,6 +91,9 @@ export class Gateway {
     this.cleanupTimer.unref();
   }
   dispose() {
+    this.disposed = true;
+    for (const r of this.active) this.clearRequest(r);
+    this.active.clear();
     clearInterval(this.cleanupTimer);
     for (const r of this.requests.values()) this.clearRequest(r);
     this.requests.clear();
@@ -99,7 +104,11 @@ export class Gateway {
     r.inspection.redacted = "";
     r.inspection.mapping.clear();
   }
+  private assertActive() {
+    if (this.disposed) throw new GatewayError("session_changed", 409);
+  }
   private prune() {
+    this.assertActive();
     for (const [id, r] of this.requests)
       if (r.expiresAt <= this.now()) {
         this.clearRequest(r);
@@ -148,6 +157,7 @@ export class Gateway {
     return result;
   }
   private inspectDeterministic(raw: unknown) {
+    this.assertActive();
     const parsed = inputSchema.safeParse(raw);
     if (!parsed.success) throw new GatewayError("invalid_input");
     const input = parsed.data;
@@ -299,11 +309,14 @@ export class Gateway {
     return this.execute(r, true);
   }
   private async execute(r: Request, cloud: boolean) {
+    this.assertActive();
+    this.active.add(r);
     try {
       const output = await this.provider(
         cloud ? this.config.cloud : this.config.local,
         cloud ? r.inspection.redacted : r.original,
       );
+      this.assertActive();
       const restoredCount = cloud
         ? [...r.inspection.mapping.keys()].filter((token) =>
             output.includes(token),
@@ -322,6 +335,7 @@ export class Gateway {
         restoredCount,
       };
     } catch {
+      this.assertActive();
       this.audit({
         event: "provider_failed",
         route: cloud ? "cloud" : "local",
@@ -329,6 +343,7 @@ export class Gateway {
       });
       throw new GatewayError("provider_unavailable", 502);
     } finally {
+      this.active.delete(r);
       this.clearRequest(r);
     }
   }
