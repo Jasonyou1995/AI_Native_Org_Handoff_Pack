@@ -1,0 +1,123 @@
+# Copyright 2026 Jason You
+# SPDX-License-Identifier: LicenseRef-Handoff-Community-1.0
+# See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
+
+name: Native macOS gates
+on: [push, pull_request]
+permissions:
+  contents: read
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  native-mac:
+    name: macOS 15 ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            rust_host: aarch64-apple-darwin
+          - runner: macos-15-intel
+            arch: x64
+            rust_host: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.1'
+      PRIVACY_SCANNER: rust
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.22.2'
+          architecture: ${{ matrix.arch }}
+      - name: Verify native architecture and toolchain
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+          EXPECTED_RUST_HOST: ${{ matrix.rust_host }}
+        run: |
+          set -euo pipefail
+          sw_vers
+          uname -m
+          node -e 'if (process.platform !== "darwin" || process.arch !== process.env.EXPECTED_ARCH) process.exit(1)'
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "$EXPECTED_RUST_HOST"
+      - run: npm ci --ignore-scripts
+      - run: cargo fmt --manifest-path rust-core/Cargo.toml --check
+      - run: cargo clippy --manifest-path rust-core/Cargo.toml --locked -- -D warnings
+      - run: npm run rust:build
+      - run: npm run rust:test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run attacks
+      - run: npm run verify
+      - run: npm run build
+      - name: Personal launcher synthetic HTTP smoke
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { spawn } from 'node:child_process';
+          import { setTimeout as pause } from 'node:timers/promises';
+          const child = spawn(process.execPath, ['dist/src/personal.js', '--demo'], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: { ...process.env, CLOUD_ENABLED: 'true', CLOUD_URL: 'https://invalid.example/v1/chat/completions', CLOUD_MODEL: 'synthetic-only', CLASSIFIER_MODEL: 'synthetic-only' },
+          });
+          let output = '';
+          child.stdout.on('data', chunk => { output = (output + chunk.toString()).slice(-8192); });
+          // The launcher prints a process-only token. Never write its stdout to CI logs/artifacts.
+          child.stderr.on('data', () => {});
+          const closed = new Promise(resolve => child.once('close', resolve));
+          try {
+            let token;
+            for (let attempt = 0; attempt < 100; attempt++) {
+              token = /Gateway token \(this process only\): ([a-f0-9]{64})/.exec(output)?.[1];
+              if (token) break;
+              if (child.exitCode !== null) throw new Error('Personal launcher exited before ready');
+              await pause(100);
+            }
+            assert.ok(token, 'Personal launcher did not become ready');
+            const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+            const base = 'http://127.0.0.1:3000';
+            assert.equal((await fetch(`${base}/api/status`)).status, 401);
+            const status = await (await fetch(`${base}/api/status`, { headers })).json();
+            assert.equal(status.mode, 'synthetic');
+            assert.equal(status.cloudEnabled, false);
+            assert.equal(status.classifier, 'disabled');
+            const inspection = await fetch(`${base}/api/inspect`, { method: 'POST', headers, body: JSON.stringify({ prompt: 'Synthetic Mac note alice@example.test', mode: 'local_only' }) });
+            assert.equal(inspection.status, 200);
+            const { requestId, route } = await inspection.json();
+            assert.equal(route, 'local');
+            const response = await fetch(`${base}/api/local`, { method: 'POST', headers, body: JSON.stringify({ requestId }) });
+            assert.equal(response.status, 200);
+            assert.equal((await response.json()).provider, 'synthetic');
+            const replay = await fetch(`${base}/api/local`, { method: 'POST', headers, body: JSON.stringify({ requestId }) });
+            assert.notEqual(replay.status, 200);
+            console.log('Personal launcher/auth/local/replay smoke passed; no real model tested.');
+          } finally {
+            output = '';
+            child.kill('SIGTERM');
+            await Promise.race([closed, pause(3000)]);
+            if (child.exitCode === null && child.signalCode === null) {
+              child.kill('SIGKILL');
+              await closed;
+            }
+          }
+          NODE
+      - name: Native Chrome browser smoke
+        env:
+          CHROME_BIN: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+          PRIVACY_SCANNER_BIN: ${{ github.workspace }}/rust-core/target/release/privacy-scanner
+        run: |
+          test -x "$CHROME_BIN"
+          node --import tsx tests/browser-smoke.ts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: macos-${{ matrix.arch }}-browser-checks
+          path: artifacts/browser-smoke/
+          if-no-files-found: ignore
+          retention-days: 7

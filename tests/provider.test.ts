@@ -41,7 +41,7 @@ it("bounds response size and sanitizes malformed replies", async () => {
   );
 });
 
-it("discovers only two fixed loopback endpoints without secrets or redirects", async () => {
+it("discovers only fixed loopback metadata endpoints without secrets or redirects", async () => {
   const mock = vi.fn(
     async (url: string) =>
       new Response(
@@ -55,7 +55,9 @@ it("discovers only two fixed loopback endpoints without secrets or redirects", a
                   { name: "remote", remote_host: "https://cloud.example" },
                 ],
               }
-            : { data: [{ id: "org/toy-model" }] },
+            : url.endsWith("/api/show")
+              ? { capabilities: ["completion"] }
+              : { data: [{ id: "org/toy-model" }] },
         ),
       ),
   );
@@ -69,13 +71,26 @@ it("discovers only two fixed loopback endpoints without secrets or redirects", a
   expect(mock.mock.calls.map((call) => call[0])).toEqual([
     "http://127.0.0.1:11434/api/tags",
     "http://127.0.0.1:1234/v1/models",
+    "http://127.0.0.1:11434/api/show",
   ]);
   for (const call of mock.mock.calls) {
     const options = (call as unknown as [string, RequestInit])[1];
     expect(options.redirect).toBe("error");
-    expect(options.method).toBe("GET");
-    expect(options.headers).toEqual({ accept: "application/json" });
-    expect(options.body).toBeUndefined();
+    if (call[0].endsWith("/api/show")) {
+      expect(options.method).toBe("POST");
+      expect(options.headers).toEqual({
+        accept: "application/json",
+        "content-type": "application/json",
+      });
+      expect(JSON.parse(String(options.body))).toEqual({
+        model: "toy:latest",
+        verbose: false,
+      });
+    } else {
+      expect(options.method).toBe("GET");
+      expect(options.headers).toEqual({ accept: "application/json" });
+      expect(options.body).toBeUndefined();
+    }
   }
 });
 it("discovery bounds responses and rejects model IDs unsafe for config snippets", async () => {
@@ -140,7 +155,9 @@ it("setup discovery requires authentication, coalesces probes and never exposes 
         JSON.stringify(
           url.endsWith("/api/tags")
             ? { models: [{ name: "toy" }] }
-            : { data: [] },
+            : url.endsWith("/api/show")
+              ? { capabilities: ["completion"] }
+              : { data: [] },
         ),
       ),
   );
@@ -171,7 +188,7 @@ it("setup discovery requires authentication, coalesces probes and never exposes 
       configuredLocal: { model: "toy" },
     });
     expect(second.status).toBe(200);
-    expect(mock).toHaveBeenCalledTimes(2);
+    expect(mock).toHaveBeenCalledTimes(3);
     expect(config.local?.model).toBe("toy");
   } finally {
     gateway.dispose();
@@ -233,4 +250,111 @@ it("personal launcher choices and config cannot inherit cloud credentials or arb
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+it("Ollama suggestions require completion capability and exclude remote or unknown metadata", async () => {
+  const infos: Record<string, unknown> = {
+    chat: { capabilities: ["completion", "vision"] },
+    embedding: { capabilities: ["embedding"] },
+    unknown: {},
+    remote: {
+      capabilities: ["completion"],
+      remote_host: "https://cloud.example",
+    },
+    remote_model: { capabilities: ["completion"], remote_model: "cloud-alias" },
+  };
+  vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
+    if (url.endsWith("/api/tags"))
+      return new Response(
+        JSON.stringify({
+          models: [...Object.keys(infos), "failed"].map((name) => ({ name })),
+        }),
+      );
+    if (url.endsWith("/v1/models")) return new Response('{"data":[]}');
+    const { model } = JSON.parse(String(options.body)) as { model: string };
+    return model === "failed"
+      ? new Response("unavailable", { status: 503 })
+      : new Response(JSON.stringify(infos[model]));
+  });
+  expect((await discoverLocalModels())[0]?.models).toEqual(["chat"]);
+});
+it("Ollama show metadata is bounded and no unknown or oversized result is suggested", async () => {
+  for (const body of [
+    "x".repeat(262145),
+    "{",
+    '{"capabilities":["embedding"]}',
+    "{}",
+  ]) {
+    vi.stubGlobal(
+      "fetch",
+      async (url: string) =>
+        new Response(
+          url.endsWith("/api/tags")
+            ? '{"models":[{"name":"toy"}]}'
+            : url.endsWith("/api/show")
+              ? body
+              : '{"data":[]}',
+        ),
+    );
+    expect((await discoverLocalModels())[0]).toMatchObject({
+      status: "empty",
+      models: [],
+    });
+  }
+});
+it("Ollama metadata probes cap candidates at20 and concurrency at4 without inference", async () => {
+  let active = 0;
+  let peak = 0;
+  let calls = 0;
+  vi.stubGlobal("fetch", async (url: string, options: RequestInit) => {
+    if (url.endsWith("/api/tags"))
+      return new Response(
+        JSON.stringify({
+          models: Array.from({ length: 100 }, (_, i) => ({ name: `toy${i}` })),
+        }),
+      );
+    if (url.endsWith("/v1/models")) return new Response('{"data":[]}');
+    expect(url).toBe("http://127.0.0.1:11434/api/show");
+    expect(Object.keys(JSON.parse(String(options.body)))).toEqual([
+      "model",
+      "verbose",
+    ]);
+    calls++;
+    active++;
+    peak = Math.max(active, peak);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    return new Response('{"capabilities":["completion"]}');
+  });
+  expect((await discoverLocalModels())[0]?.models).toHaveLength(20);
+  expect(calls).toBe(20);
+  expect(peak).toBe(4);
+});
+it("Ollama metadata timeout fails closed within4seconds aggregate rather than100sequential probes", async () => {
+  vi.useFakeTimers();
+  let calls = 0;
+  vi.stubGlobal("fetch", (url: string, options: RequestInit) => {
+    if (url.endsWith("/api/tags"))
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            models: Array.from({ length: 100 }, (_, i) => ({
+              name: `toy${i}`,
+            })),
+          }),
+        ),
+      );
+    if (url.endsWith("/v1/models"))
+      return Promise.resolve(new Response('{"data":[]}'));
+    calls++;
+    return new Promise<Response>((_resolve, reject) =>
+      options.signal?.addEventListener("abort", () =>
+        reject(new Error("aborted")),
+      ),
+    );
+  });
+  const pending = discoverLocalModels();
+  await vi.advanceTimersByTimeAsync(4001);
+  expect((await pending)[0]).toMatchObject({ status: "empty", models: [] });
+  expect(calls).toBeLessThanOrEqual(8);
 });
