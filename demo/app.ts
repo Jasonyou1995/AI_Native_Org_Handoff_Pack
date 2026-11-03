@@ -243,6 +243,12 @@ function setBusy(value: boolean): void {
   busy = value;
   fields.disabled = value;
   tokenInput.disabled = value;
+  classification.disabled = value;
+  modelSelect.disabled = value;
+  for (const radio of document.querySelectorAll<HTMLInputElement>(
+    'input[name="mode"]',
+  ))
+    radio.disabled = value;
   for (const button of document.querySelectorAll<HTMLButtonElement>(
     "#connection-form button, #example, #use-model",
   ))
@@ -343,6 +349,14 @@ function clearSetup(): void {
     "连接后可以试用合成演示，或检查已经启动的本地模型。";
   element("discovery-status").textContent =
     "只检查网关所在环境的两个固定本机端口，不扫描你的局域网。";
+  for (const id of [
+    "cloud-config",
+    "mode-config",
+    "scanner-config",
+    "classifier-config",
+    "policy-config",
+  ])
+    element(id).textContent = "未读取";
   discoveryBusy = false;
   detectButton.disabled = true;
   demoButton.disabled = true;
