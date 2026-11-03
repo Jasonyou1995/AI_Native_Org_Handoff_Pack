@@ -43,23 +43,23 @@ CI pins Node 24.22.2 and Rust 1.99.1. For an exact Rust reproduction when rustup
 
 CI 固定 Node 24.22.2 与 Rust 1.99.1。首次下载依赖/工具链需要联网；每台 Mac 应使用对应架构重新构建。不要复制 Linux 扫描器、另一架构的 `node_modules` 或编译目录。升级 Node/Rust 后重新执行验收。
 
-Open the localhost URL printed by the launcher, enter its freshly generated gateway token, click **Try demo**, **Inspect**, then **Run locally**. The result must say synthetic/demo, not real AI inference. Keep the terminal open. Ctrl+C stops it and discards pending in-memory requests. The token is not a model API key; do not share it in screenshots.
+Open the localhost URL printed by the launcher, follow the welcome dialog, open **Settings**, enter its freshly generated connection code, then choose the synthetic demo. Enter a task, click **Next: check task**, review, then **Run locally**. The result must say synthetic/demo, not real AI inference. Keep the terminal open. Ctrl+C stops it and discards pending in-memory requests. The token is not a model API key; do not share it in screenshots.
 
-打开启动器输出的本机网址，输入新生成的令牌，依次试用虚构任务、检测、本地处理。输出必须明确标为合成演示。保持终端开启，Ctrl+C 停止并丢弃内存中请求。令牌不是模型 API Key，不要发到截图或聊天中。
+打开启动器输出的本机网址，按欢迎弹窗进入设置，输入新生成的连接码，选择合成演示。写下任务，下一步检查、确认后本地处理。输出必须明确标为合成演示。保持终端开启，Ctrl+C 停止并丢弃内存中请求。令牌不是模型 API Key，不要发到截图或聊天中。
 
 ## 3. Use the existing local model · 使用已有本地模型
 
-After the demo works, stop it. Start your already installed Ollama or compatible local service with a model whose files are downloaded. Then:
+Start your already installed Ollama or compatible local service with downloaded model files. If the personal gateway is already running, leave it running and open Settings; otherwise:
 
-演示跑通后先停止，再启动已安装且已下载权重的本地模型服务：
+启动已安装且已下载权重的本地模型服务。个人网关已运行时无需重启，直接打开设置；否则：
 
 ```bash
 npm run personal
 ```
 
-Select one detected model in the terminal. Ollama suggestions require completion-capable metadata; embedding-only or unknown-capability models are excluded. Up to the first 20 eligible candidates are checked within a bounded deadline. Discovery checks only Ollama `127.0.0.1:11434` and an OpenAI-compatible service at `127.0.0.1:1234`, without sending a prompt or scanning your network. Other ports/authenticated model lists need deliberate manual configuration in the [personal guide](15-个人快速开始.md). No model is installed or downloaded automatically. If a model is unavailable, the app must report it, not silently use cloud. The personal launcher always disables cloud.
+In browser **Settings**, connect and refresh local models. Select a model, then press **Use selected model**. The selection applies to this running personal session without restarting. Existing previews are invalidated. Ollama suggestions require completion-capable metadata; embedding-only or unknown-capability models are excluded. Up to the first 20 eligible candidates are checked within a bounded deadline. Discovery checks only Ollama `127.0.0.1:11434` and an OpenAI-compatible service at `127.0.0.1:1234`, without sending a prompt or scanning your network. Other ports/authenticated model lists need deliberate manual configuration in the [personal guide](15-个人快速开始.md). No model is installed or downloaded automatically. If a model is unavailable, the app reports it; reconnect to confirm configuration and inspect again, without automatic cloud fallback. The personal launcher always disables cloud.
 
-终端选择检测到的模型；只探测两个固定本机端口，不发送提示、不扫描内网、不自动安装或下载模型。其他端口须手动配置。模型不可用时应明确报错，不静默回退云端。个人启动器始终关闭云端。
+在浏览器设置中连接、刷新并选择模型，点击“使用所选模型”。本次个人进程立即应用，无需重启；旧预览作废。只探测两个固定本机端口，不发送提示、不扫描内网、不自动安装或下载模型。其他端口须手动配置。模型不可用时应明确报错，不静默回退云端。个人启动器始终关闭云端。
 
 A localhost service can still proxy elsewhere. Confirm the model is genuinely local, avoid cloud-backed aliases, and test with synthetic input before private data. The gateway has bounded provider timeouts; a cold/oversized model may fail. Choose a model suitable for the Mac's available RAM and warm it locally. No hardware-independent speed claim is made.
 
