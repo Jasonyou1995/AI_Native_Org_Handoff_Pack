@@ -3,7 +3,9 @@
 # See LICENSES/Handoff-Community-1.0.txt and LICENSE-SCOPE.md.
 
 name: Native macOS gates
-on: [push, pull_request]
+# Called once by gateway.yml so release waits for both architectures on the same commit.
+on:
+  workflow_call:
 permissions:
   contents: read
 concurrency:

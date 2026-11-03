@@ -4,12 +4,11 @@
 
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { type Config, loadConfig } from "./config.js";
-import { type DiscoveredProvider, discoverLocalModels } from "./discovery.js";
+import type { DiscoveredProvider } from "./discovery.js";
 import { Gateway } from "./gateway.js";
 
 export type LocalChoice = { label: string; url: string; model: string };
@@ -50,60 +49,20 @@ async function main(): Promise<void> {
   if (args.some((arg) => arg !== "--demo") || args.length > 1) {
     throw new Error("Usage: npm run personal [-- --demo]");
   }
-  let choice: LocalChoice | undefined;
-  if (!args.includes("--demo")) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-      throw new Error(
-        "Use an interactive terminal to choose a model, or --demo for the synthetic demo",
-      );
-    }
-    console.log(
-      "Checking only this gateway's loopback Ollama and compatible server endpoints...",
-    );
-    const choices = localChoices(await discoverLocalModels());
-    console.log("0. Synthetic demo (no model or network inference)");
-    choices.forEach((candidate, index) => {
-      console.log(`${index + 1}. ${candidate.label}`);
-    });
-    if (!choices.length)
-      console.log(
-        "No compatible local models found. Start a local server with downloaded model files, then restart this command.",
-      );
-    console.log(
-      "A local endpoint can still proxy to a cloud service. Verify your model server is configured for offline inference.",
-    );
-    const input = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    try {
-      const answer = (
-        await input.question("Choose a number (0 for demo, q to quit): ")
-      ).trim();
-      if (answer.toLowerCase() === "q") return;
-      if (!/^\d{1,3}$/.test(answer)) throw new Error("Invalid model selection");
-      const index = Number(answer);
-      if (index > choices.length) throw new Error("Invalid model selection");
-      choice = index === 0 ? undefined : choices[index - 1];
-    } finally {
-      input.close();
-    }
-  }
-  const config = personalConfig(choice);
+  const config = personalConfig();
   const gateway = new Gateway(config);
+  const app = createApp(config, gateway, { personalSession: true });
   const server = serve(
     {
       hostname: config.host,
       port: config.port,
-      fetch: createApp(config, gateway).fetch,
+      fetch: app.fetch,
     },
     () => {
       console.log(`Open http://127.0.0.1:${config.port}`);
       console.log(`Gateway token (this process only): ${config.auth}`);
       console.log(
-        choice
-          ? `Local model: ${choice.label}`
-          : "Synthetic demo only: no AI model is running.",
+        "Synthetic demo until you choose a local model in Settings. No model downloads or cloud inference happen automatically.",
       );
       console.log(
         "Cloud is disabled. Keep this terminal open. Ctrl+C stops the app and discards in-memory requests.",
@@ -113,7 +72,7 @@ async function main(): Promise<void> {
   if ("requestTimeout" in server) server.requestTimeout = 20_000;
   if ("headersTimeout" in server) server.headersTimeout = 10_000;
   const shutdown = () => {
-    gateway.dispose();
+    app.dispose();
     server.close();
   };
   process.once("SIGINT", shutdown);
