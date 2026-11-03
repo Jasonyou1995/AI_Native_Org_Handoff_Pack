@@ -57,7 +57,7 @@ After the demo works, stop it. Start your already installed Ollama or compatible
 npm run personal
 ```
 
-Select one detected model in the terminal. Discovery checks only Ollama `127.0.0.1:11434` and an OpenAI-compatible service at `127.0.0.1:1234`, without sending a prompt or scanning your network. Other ports/authenticated model lists need deliberate manual configuration in the [personal guide](15-个人快速开始.md). No model is installed or downloaded automatically. If a model is unavailable, the app must report it, not silently use cloud. The personal launcher always disables cloud.
+Select one detected model in the terminal. Ollama suggestions require completion-capable metadata; embedding-only or unknown-capability models are excluded. Up to the first 20 eligible candidates are checked within a bounded deadline. Discovery checks only Ollama `127.0.0.1:11434` and an OpenAI-compatible service at `127.0.0.1:1234`, without sending a prompt or scanning your network. Other ports/authenticated model lists need deliberate manual configuration in the [personal guide](15-个人快速开始.md). No model is installed or downloaded automatically. If a model is unavailable, the app must report it, not silently use cloud. The personal launcher always disables cloud.
 
 终端选择检测到的模型；只探测两个固定本机端口，不发送提示、不扫描内网、不自动安装或下载模型。其他端口须手动配置。模型不可用时应明确报错，不静默回退云端。个人启动器始终关闭云端。
 
