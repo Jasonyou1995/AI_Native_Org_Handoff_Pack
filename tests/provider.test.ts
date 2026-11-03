@@ -358,3 +358,289 @@ it("Ollama metadata timeout fails closed within4seconds aggregate rather than100
   expect((await pending)[0]).toMatchObject({ status: "empty", models: [] });
   expect(calls).toBeLessThanOrEqual(8);
 });
+
+const selectionBody = { providerId: "ollama", model: "toy" };
+function mockSelectionDiscovery() {
+  vi.stubGlobal(
+    "fetch",
+    async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.endsWith("/api/tags")
+            ? { models: [{ name: "toy" }, { name: "embedding" }] }
+            : url.endsWith("/api/show")
+              ? { capabilities: ["completion"] }
+              : { data: [] },
+        ),
+      ),
+  );
+}
+const sessionHeaders = {
+  authorization: "Bearer session-test",
+  "content-type": "application/json",
+};
+function selectModel(
+  app: ReturnType<typeof createApp>,
+  data: unknown = selectionBody,
+  headers = sessionHeaders,
+) {
+  return app.request("http://127.0.0.1/api/setup/select", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+  });
+}
+it("runtime model selection is personal-only, authenticated, same-origin and strictly bounded", async () => {
+  mockSelectionDiscovery();
+  const config = loadConfig({ GATEWAY_TOKEN: "session-test" });
+  const normal = createApp(config);
+  const personal = createApp(config, undefined, { personalSession: true });
+  try {
+    expect((await selectModel(normal)).status).toBe(403);
+    expect(
+      (
+        await selectModel(personal, selectionBody, {
+          ...sessionHeaders,
+          authorization: "",
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await selectModel(personal, selectionBody, {
+          ...sessionHeaders,
+          origin: "https://evil.example",
+        } as typeof sessionHeaders)
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await selectModel(personal, {
+          ...selectionBody,
+          url: "https://evil.example",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await selectModel(personal, { ...selectionBody, model: "missing" }))
+        .status,
+    ).toBe(409);
+    expect((await selectModel(personal)).status).toBe(200);
+    const status = await (
+      await personal.request("/api/status", { headers: sessionHeaders })
+    ).json();
+    expect(status).toMatchObject({
+      mode: "local_provider",
+      cloudEnabled: false,
+      setup: { runtimeSelection: true, configuredLocal: { model: "toy" } },
+    });
+    expect(config.local).toBeUndefined();
+  } finally {
+    normal.dispose();
+    personal.dispose();
+  }
+});
+it("model switch invalidates old requests and suppresses in-flight results", async () => {
+  mockSelectionDiscovery();
+  const config = loadConfig({ GATEWAY_TOKEN: "session-test" });
+  let finish!: (value: string) => void;
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const gateway = new Gateway(config, () => {
+    started();
+    return new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+  });
+  const app = createApp(config, gateway, { personalSession: true });
+  try {
+    const old = gateway.inspect({ prompt: "synthetic sample" });
+    const active = gateway.inspect({ prompt: "synthetic sample" });
+    const pending = app.request("/api/local", {
+      method: "POST",
+      headers: sessionHeaders,
+      body: JSON.stringify({ requestId: active.requestId }),
+    });
+    await running;
+    expect((await selectModel(app)).status).toBe(200);
+    finish("stale result must not be returned");
+    const result = await pending;
+    expect(result.status).toBe(409);
+    expect(await result.json()).toEqual({ error: "session_changed" });
+    expect(
+      (
+        await app.request("/api/local", {
+          method: "POST",
+          headers: sessionHeaders,
+          body: JSON.stringify({ requestId: old.requestId }),
+        })
+      ).status,
+    ).toBe(404);
+    expect(() => gateway.inspect({ prompt: "closed" })).toThrow(
+      "session_changed",
+    );
+  } finally {
+    app.dispose();
+  }
+});
+it("selection rechecks availability and does not permit embedding-only Ollama models", async () => {
+  let capabilities = ["completion"];
+  const mock = vi.fn(
+    async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.endsWith("/api/tags")
+            ? { models: [{ name: "toy" }] }
+            : url.endsWith("/api/show")
+              ? { capabilities }
+              : { data: [] },
+        ),
+      ),
+  );
+  vi.stubGlobal("fetch", mock);
+  const app = createApp(
+    loadConfig({ GATEWAY_TOKEN: "session-test" }),
+    undefined,
+    { personalSession: true },
+  );
+  try {
+    await app.request("/api/setup/discover", { headers: sessionHeaders });
+    capabilities = ["embedding"];
+    expect((await selectModel(app)).status).toBe(409);
+    expect(mock).toHaveBeenCalledTimes(6);
+    const status = await (
+      await app.request("/api/status", { headers: sessionHeaders })
+    ).json();
+    expect(status.mode).toBe("synthetic");
+    capabilities = ["completion"];
+    expect((await selectModel(app)).status).toBe(200);
+  } finally {
+    app.dispose();
+  }
+});
+it("concurrent selections share fresh probes and only the latest selection commits", async () => {
+  let finish!: (value: Response) => void;
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.endsWith("/api/tags")) {
+      started();
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }
+    return new Response(
+      JSON.stringify(
+        url.endsWith("/api/show")
+          ? { capabilities: ["completion"] }
+          : { data: [] },
+      ),
+    );
+  });
+  const app = createApp(
+    loadConfig({ GATEWAY_TOKEN: "session-test" }),
+    undefined,
+    { personalSession: true },
+  );
+  try {
+    const first = selectModel(app);
+    await running;
+    const second = selectModel(app, { ...selectionBody, model: "second" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    finish(new Response('{"models":[{"name":"toy"},{"name":"second"}]}'));
+    expect(await (await first).json()).toEqual({
+      error: "selection_superseded",
+    });
+    expect(await (await second).json()).toMatchObject({
+      configuredLocal: { model: "second" },
+      cloudEnabled: false,
+    });
+  } finally {
+    app.dispose();
+  }
+});
+it("personal runtime selection refuses cloud/classifier credentials and disposed gateways invalidate receipts", async () => {
+  for (const env of [
+    {
+      CLOUD_URL: "https://provider.example/v1/chat/completions",
+      CLOUD_MODEL: "toy",
+      CLOUD_ENABLED: "true",
+    },
+    {
+      LOCAL_URL: "http://127.0.0.1:11434/v1/chat/completions",
+      LOCAL_MODEL: "toy",
+      LOCAL_API_KEY: "synthetic-test",
+    },
+    {
+      LOCAL_URL: "http://127.0.0.1:11434/v1/chat/completions",
+      LOCAL_MODEL: "toy",
+      CLASSIFIER_MODEL: "toy",
+    },
+  ]) {
+    expect(() =>
+      createApp(
+        loadConfig({ ...env, GATEWAY_TOKEN: "session-test" }),
+        undefined,
+        { personalSession: true },
+      ),
+    ).toThrow("Personal sessions require");
+  }
+  const gateway = new Gateway(
+    loadConfig({
+      CLOUD_URL: "https://provider.example/v1/chat/completions",
+      CLOUD_MODEL: "toy",
+      CLOUD_ENABLED: "true",
+    }),
+  );
+  const inspected = gateway.inspect({
+    prompt: "synthetic public sample",
+    classification: "public",
+    mode: "hybrid",
+  });
+  const { receipt } = gateway.approve(
+    inspected.requestId,
+    inspected.payloadHash,
+  );
+  gateway.dispose();
+  gateway.dispose();
+  await expect(gateway.cloud(receipt)).rejects.toThrow("session_changed");
+  expect(() =>
+    gateway.approve(inspected.requestId, inspected.payloadHash),
+  ).toThrow("session_changed");
+});
+it("disposing an app during discovery prevents a late selection from reviving its session", async () => {
+  let finish!: (value: Response) => void;
+  let started!: () => void;
+  const running = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  vi.stubGlobal("fetch", async (url: string) => {
+    if (url.endsWith("/api/tags")) {
+      started();
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    }
+    return new Response(
+      JSON.stringify(
+        url.endsWith("/api/show")
+          ? { capabilities: ["completion"] }
+          : { data: [] },
+      ),
+    );
+  });
+  const app = createApp(
+    loadConfig({ GATEWAY_TOKEN: "session-test" }),
+    undefined,
+    { personalSession: true },
+  );
+  const pending = selectModel(app);
+  await running;
+  app.dispose();
+  finish(new Response('{"models":[{"name":"toy"}]}'));
+  expect(await (await pending).json()).toEqual({ error: "session_changed" });
+});

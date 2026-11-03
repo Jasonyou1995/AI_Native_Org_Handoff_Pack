@@ -259,57 +259,130 @@ try {
     deviceScaleFactor: 1,
     mobile: false,
   });
-  // Discovery UI uses deterministic metadata, never a real model service.
+  // Metadata/model changes and cloud execution are fixtures. Local task flow uses Rust.
   await send("Page.addScriptToEvaluateOnNewDocument", {
     source: `(() => {
       const originalFetch = window.fetch.bind(window);
-      window.discoveryFixture = {scope:"gateway_loopback",requiresRestart:true,configuredLocal:null,providers:[{id:"ollama",label:"Ollama",status:"available",url:"http://127.0.0.1:11434/v1/chat/completions",models:["synthetic-model:tiny"]}]};
-      window.discoveryDelay = 0;
-      window.discoveryCalls = 0;
+      window.discoveryFixture = {scope:"gateway_loopback",requiresRestart:false,configuredLocal:null,providers:[{id:"ollama",label:"Ollama",status:"available",url:"http://127.0.0.1:11434/v1/chat/completions",models:["synthetic-model:tiny"]}]};
+      window.discoveryDelay = 0; window.selectionDelay = 0; window.localDelay = 0;
+      window.discoveryCalls = 0; window.selectionCalls = 0; window.cloudCalls = 0;
+      window.selectedModel = false; window.cloudFixture = false;
       window.fetch = async (input, options) => {
+        if (input === "/api/status") {
+          const response = await originalFetch(input, options);
+          if (!response.ok) return response;
+          const status = await response.json();
+          status.setup = {runtimeSelection:true,configuredLocal:window.selectedModel ? {url:"http://127.0.0.1:11434/v1/chat/completions",model:"synthetic-model:tiny"}:null};
+          if (window.selectedModel) status.mode = "local_provider";
+          if (window.cloudFixture) status.cloudEnabled = true;
+          return Response.json(status);
+        }
         if (input === "/api/setup/discover") {
           window.discoveryCalls += 1;
           const body = JSON.stringify(window.discoveryFixture);
           await new Promise(resolve => setTimeout(resolve, window.discoveryDelay));
-          return new Response(body, {status:200, headers:{"Content-Type":"application/json"}});
+          return new Response(body, {status:200,headers:{"Content-Type":"application/json"}});
         }
-        return originalFetch(input, options);
+        if (input === "/api/setup/select") {
+          window.selectionCalls += 1; window.selectionBody = JSON.parse(options.body);
+          await new Promise(resolve => setTimeout(resolve, window.selectionDelay));
+          window.selectedModel = true;
+          return Response.json({mode:"local_provider",configuredLocal:{url:"http://127.0.0.1:11434/v1/chat/completions",model:"synthetic-model:tiny"},cloudEnabled:false});
+        }
+        if (window.cloudFixture && input === "/api/inspect") return Response.json({requestId:"a".repeat(48),route:"approval_required",reasons:["explicit_approval_required"],findings:[],redactedPreview:"Public synthetic note",payloadHash:"b".repeat(64),expiresAt:Date.now()+120000,policyRevision:"fixture",provider:"cloud",outboundPayload:{model:"synthetic-cloud",messages:[{role:"system",content:"Full fixture instruction"},{role:"user",content:"Public synthetic note"}]},destination:{url:"https://example.invalid/v1/chat/completions",model:"synthetic-cloud"}});
+        if (window.cloudFixture && input === "/api/approve") return Response.json({receipt:"c".repeat(64)});
+        if (window.cloudFixture && input === "/api/cloud") { window.cloudCalls += 1; return Response.json({route:"cloud",provider:"cloud",output:"Synthetic cloud fixture result",restoredCount:0}); }
+        const response = await originalFetch(input, options);
+        if (input === "/api/local") await new Promise(resolve => setTimeout(resolve, window.localDelay));
+        return response;
       };
     })();`,
   });
   await send("Page.navigate", { url: origin });
-  await wait('document.querySelector("#inspect") !== null');
+  // Navigation can resolve before the document and module script are ready.
+  await wait('document.querySelector("#help-dialog")?.open === true');
+  await click("#help-next");
   assert.equal(
-    await evaluate('document.querySelector("#inspect").disabled'),
+    await evaluate('document.querySelector("#help-count").textContent'),
+    "2 / 3",
+  );
+  await click("#help-back");
+  assert.equal(
+    await evaluate('document.querySelector("#help-count").textContent'),
+    "1 / 3",
+  );
+  // Native Tab and Shift+Tab stay in the modal.
+  await evaluate('document.querySelector("#help-next").focus()');
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Tab",
+    code: "Tab",
+    windowsVirtualKeyCode: 9,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Tab",
+    code: "Tab",
+    windowsVirtualKeyCode: 9,
+  });
+  assert.equal(
+    await evaluate('document.activeElement.hasAttribute("data-close")'),
     true,
   );
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Tab",
+    code: "Tab",
+    windowsVirtualKeyCode: 9,
+    modifiers: 8,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Tab",
+    code: "Tab",
+    windowsVirtualKeyCode: 9,
+    modifiers: 8,
+  });
+  assert.equal(await evaluate("document.activeElement.id"), "help-next");
+  await click("#help-dialog [data-close]");
+  await click("#help-open");
+  await send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "Escape",
+    code: "Escape",
+    windowsVirtualKeyCode: 27,
+  });
+  await send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "Escape",
+    code: "Escape",
+    windowsVirtualKeyCode: 27,
+  });
+  await wait('!document.querySelector("#help-dialog").open');
+  await wait('document.activeElement.id === "help-open"');
+  await click("#settings-open");
   await fill("#runtime-token", "wrong");
   await click("#connection-form button");
   await wait(
     'document.querySelector("#connection-badge").textContent === "连接失败"',
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#inspect").disabled'),
+    true,
   );
   await fill("#runtime-token", token);
   await click("#connection-form button");
   await wait(
     'document.querySelector("#connection-badge").textContent === "本地网关已连接"',
   );
-  assert.equal(
-    await evaluate('document.querySelector("#scanner-config").textContent'),
-    "Rust 核心 · 可用",
-  );
   await wait('!document.querySelector("#model-config-panel").hidden');
   assert.equal(
-    await evaluate('document.querySelector("#setup-mode").textContent'),
-    "合成演示 · Demo",
+    await evaluate('document.querySelector("#runtime-token").value'),
+    "",
   );
   assert.equal(
-    await evaluate('document.querySelector("#local-env-preview").textContent'),
-    "LOCAL_URL=http://127.0.0.1:11434/v1/chat/completions\nLOCAL_MODEL=synthetic-model:tiny\nCLOUD_ENABLED=false",
-  );
-  assert.equal(
-    await evaluate("window.discoveryCalls"),
-    1,
-    "One auto-discovery after authentication",
+    await evaluate('document.querySelector("#scanner-config").textContent'),
+    "rust · 可用",
   );
   await evaluate(
     'window.discoveryFixture.providers[0].models = ["bad\\nCLOUD_ENABLED=true"]',
@@ -322,51 +395,56 @@ try {
     await evaluate('document.querySelector("#model-config-panel").hidden'),
     true,
   );
-  assert.equal(
-    await evaluate('document.querySelector("#local-env-preview").textContent'),
-    "",
-  );
   await evaluate(
-    'window.discoveryFixture.providers[0].models = []; window.discoveryFixture.providers[0].status = "unavailable"',
+    'window.discoveryFixture.providers[0].models = []; window.discoveryFixture.providers[0].status = "empty"',
   );
   await click("#detect-models");
   await wait(
     'document.querySelector("#discovery-status").textContent.includes("没有检测到")',
   );
   await click("#start-demo");
-
+  assert.equal(
+    await evaluate('document.querySelector("#settings-dialog").open'),
+    false,
+  );
   await click("#inspect");
-  await wait('!document.querySelector("#local-run").hidden');
+  await wait('!document.querySelector("#review-screen").hidden');
+  assert.equal(
+    await evaluate(
+      'document.querySelector("#input-screen").hidden && document.querySelector("#result-screen").hidden',
+    ),
+    true,
+  );
   assert.equal(
     await evaluate('document.querySelector("#approval-box").hidden'),
     true,
   );
+  await click("#review-back");
+  assert.equal(
+    await evaluate('document.querySelector("#local-run").hidden'),
+    true,
+  );
+  await click("#inspect");
+  await wait('!document.querySelector("#local-run").hidden');
   await evaluate(
     'document.querySelector("#local-run").click();document.querySelector("#local-run").click()',
   );
   await wait(
     'document.querySelector("#result-badge").textContent === "虚构演示输出"',
   );
-  const localRequests = events.filter(
-    (event) =>
-      event.method === "Network.requestWillBeSent" &&
-      String(record(event.params.request).url).endsWith("/api/local"),
-  );
   assert.equal(
-    localRequests.length,
+    events.filter(
+      (event) =>
+        event.method === "Network.requestWillBeSent" &&
+        String(record(event.params.request).url).endsWith("/api/local"),
+    ).length,
     1,
-    "Double-click must issue only one local request",
-  );
-  assert.equal(
-    await evaluate(
-      'document.querySelector("#result").textContent.includes("alice@example.test")',
-    ),
-    true,
   );
   await screenshot("desktop-local-result");
+  await click("#new-task");
   await fill(
     "#prompt",
-    '<img src=x onerror="window.unsafeExecuted=true"> 虚构示例 alice@example.test',
+    '<img src=x onerror="window.unsafeExecuted=true"> synthetic alice@example.test',
   );
   await click("#inspect");
   await wait('!document.querySelector("#local-run").hidden');
@@ -376,15 +454,7 @@ try {
   );
   assert.equal(await evaluate("Boolean(window.unsafeExecuted)"), false);
   assert.equal(await evaluate('document.querySelector("#result img")'), null);
-  await click("#inspect");
-  await wait('!document.querySelector("#local-run").hidden');
-  await fill("#prompt", "已修改的虚构示例");
-  assert.equal(
-    await evaluate(
-      'document.querySelector("#local-run").hidden && document.querySelector("#approval-box").hidden',
-    ),
-    true,
-  );
+  await click("#new-task");
   await evaluate(
     `(()=>{const dt=new DataTransfer();dt.items.add(new File(['fake'],'document.pdf',{type:'application/pdf'}));const el=document.querySelector('#files');el.files=dt.files;el.dispatchEvent(new Event('change',{bubbles:true}));})()`,
   );
@@ -405,6 +475,113 @@ try {
     await evaluate('document.querySelector("#files").files.length'),
     0,
   );
+  await fill("#prompt", "Synthetic delayed task");
+  await click("#inspect");
+  await wait('!document.querySelector("#local-run").hidden');
+  await evaluate("window.localDelay = 350");
+  await click("#local-run");
+  await click("#reset");
+  await pause(500);
+  assert.equal(
+    await evaluate(
+      'document.querySelector("#result-screen").hidden && document.querySelector("#prompt").value === "" && document.querySelector("#inspect").disabled',
+    ),
+    true,
+  );
+  await click("#settings-open");
+  await fill("#runtime-token", token);
+  await click("#connection-form button");
+  await wait(
+    'document.querySelector("#connection-badge").textContent === "本地网关已连接"',
+  );
+  await wait('!document.querySelector("#detect-models").disabled');
+  await evaluate(
+    'window.discoveryFixture.providers[0].models = ["synthetic-model:tiny"]; window.discoveryFixture.providers[0].status = "available"',
+  );
+  await click("#detect-models");
+  await wait('!document.querySelector("#model-config-panel").hidden');
+  await click("#use-model");
+  await wait('!document.querySelector("#settings-dialog").open');
+  assert.deepEqual(await evaluate("window.selectionBody"), {
+    providerId: "ollama",
+    model: "synthetic-model:tiny",
+  });
+  assert.equal(
+    await evaluate('document.querySelector("#setup-mode").textContent'),
+    "本地模型",
+  );
+  // Selection response arriving after reset must not reconnect or repopulate UI.
+  await click("#settings-open");
+  await evaluate("window.selectionDelay = 350");
+  await click("#use-model");
+  await click("#settings-dialog [data-close]");
+  await click("#reset");
+  await pause(500);
+  assert.equal(
+    await evaluate('document.querySelector("#inspect").disabled'),
+    true,
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#connection-badge").textContent'),
+    "尚未连接",
+  );
+  await click("#settings-open");
+  await fill("#runtime-token", token);
+  await click("#connection-form button");
+  await wait('!document.querySelector("#detect-models").disabled');
+  await evaluate("window.discoveryDelay = 350");
+  await click("#detect-models");
+  await click("#settings-dialog [data-close]");
+  await click("#reset");
+  await pause(500);
+  assert.equal(
+    await evaluate('document.querySelector("#model-services").children.length'),
+    0,
+  );
+  // Cloud stays fully mocked, and requires visible recipient/full payload + explicit consent.
+  await evaluate("window.cloudFixture = true; window.discoveryDelay = 0");
+  await click("#settings-open");
+  await fill("#runtime-token", token);
+  await click("#connection-form button");
+  await wait(
+    'document.querySelector("#connection-badge").textContent === "本地网关已连接"',
+  );
+  await evaluate(
+    'document.querySelector("#classification").value="public";document.querySelector("input[value=hybrid]").checked=true',
+  );
+  await click("#settings-dialog [data-close]");
+  await fill("#prompt", "Public synthetic note");
+  await click("#inspect");
+  await wait('!document.querySelector("#approval-box").hidden');
+  assert.equal(
+    await evaluate('document.querySelector("#cloud-review").hidden'),
+    false,
+  );
+  assert.equal(
+    await evaluate(
+      'document.querySelector("#provider").textContent.includes("https://example.invalid/v1/chat/completions")',
+    ),
+    true,
+  );
+  assert.equal(
+    await evaluate(
+      'document.querySelector("#preview").textContent.includes("Full fixture instruction")',
+    ),
+    true,
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#cloud-send").disabled'),
+    true,
+  );
+  assert.equal(await evaluate("window.cloudCalls"), 0);
+  await screenshot("cloud-review-fixture");
+  await click("#approve-check");
+  await click("#cloud-send");
+  await wait(
+    'document.querySelector("#result-badge").textContent === "云端返回"',
+  );
+  assert.equal(await evaluate("window.cloudCalls"), 1);
+  await click("#new-task");
   await send("Emulation.setDeviceMetricsOverride", {
     width: 390,
     height: 844,
@@ -415,64 +592,63 @@ try {
   assert.equal(
     await evaluate("document.documentElement.scrollWidth <= window.innerWidth"),
     true,
-    "Mobile layout must not overflow horizontally",
   );
+  await click("#help-open");
+  await screenshot("mobile-help");
+  await click("#help-dialog [data-close]");
   assert.equal(
     await evaluate("localStorage.length + sessionStorage.length"),
     0,
   );
-  await evaluate("window.discoveryDelay = 300");
-  await click("#detect-models");
   await click("#reset");
-  await pause(400);
-  assert.equal(
-    await evaluate('document.querySelector("#model-services").children.length'),
-    0,
-    "Late discovery cannot repopulate reset workspace",
-  );
-  assert.equal(
-    await evaluate('document.querySelector("#local-env-preview").textContent'),
-    "",
-  );
-  assert.equal(await evaluate('document.querySelector("#prompt").value'), "");
-  assert.equal(
-    await evaluate('document.querySelector("#inspect").disabled'),
-    true,
-  );
   assert.equal(
     events.filter((event) => event.method === "Runtime.exceptionThrown").length,
     0,
-    "No uncaught browser exceptions",
   );
   assert.equal(
     events.filter(
       (event) =>
         event.method === "Network.requestWillBeSent" &&
-        /\/api\/(approve|cloud)$/.test(
-          String(record(event.params.request).url),
-        ),
+        !String(record(event.params.request).url).startsWith(origin),
     ).length,
     0,
-    "Local flow must never request cloud approval or execution",
+    "No external browser requests",
+  );
+  await send("Page.reload");
+  await wait('document.querySelector("#help-dialog")?.open === true');
+  assert.equal(
+    await evaluate('document.querySelector("#inspect").disabled'),
+    true,
+  );
+  assert.equal(
+    await evaluate('document.querySelector("#connection-badge").textContent'),
+    "尚未连接",
   );
   const results = {
     passed: [
-      "real Rust/synthetic local API",
-      "wrong/right token",
-      "personal onboarding with synthetic discovery fixture",
-      "unsafe model metadata rejected",
-      "unavailable discovery keeps demo usable",
-      "reset discards late discovery",
-      "single request on double-click",
-      "HTML rendered as text",
-      "edit invalidates preview",
-      "unsupported file",
-      "invalid UTF-8",
+      "native Rust synthetic API",
+      "wrong/right authentication and reconnect",
+      "guided next/back/close/Escape and return focus",
+      "one stage visible",
+      "local review/back invalidation",
+      "duplicate submit",
+      "safe HTML rendering",
+      "invalid extension/UTF-8",
+      "runtime model selection contract",
+      "reset during local processing",
+      "reset during model selection",
+      "reset during discovery",
+      "full cloud recipient/payload review and explicit approval (mock only)",
       "390px layout",
       "empty browser storage",
-      "reset",
+      "no external browser requests",
     ],
-    screenshots: ["desktop-local-result.png", "mobile-workspace.png"],
+    screenshots: [
+      "desktop-local-result.png",
+      "mobile-workspace.png",
+      "mobile-help.png",
+      "cloud-review-fixture.png",
+    ],
   };
   await writeFile(
     `${artifacts}/results.json`,
